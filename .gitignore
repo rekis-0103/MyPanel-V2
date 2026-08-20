@@ -1,0 +1,47 @@
+.env
+.env.*
+!.env.example
+
+# Local credentials and certificate material
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+certs/
+secrets/*
+!secrets/*.example
+
+# Runtime state, databases, and operator backups
+data/
+backups/
+mypanel-data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+
+# Dependencies, builds, test output, and caches
+node_modules/
+dist/
+tmp/
+coverage/
+.cache/
+*.tsbuildinfo
+coverage.out
+*.test
+
+# Logs and process state
+*.log
+*.pid
+*.pid.lock
+
+# Local editor and operating-system metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

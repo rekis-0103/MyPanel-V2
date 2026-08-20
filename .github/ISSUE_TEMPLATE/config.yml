@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Laporan keamanan privat
+    url: https://github.com/rekis-0103/MyPanel-V2/security/advisories/new
+    about: Laporkan kerentanan tanpa mengekspos detail melalui issue publik.

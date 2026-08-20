@@ -1,0 +1,39 @@
+name: Bug report
+description: Laporkan perilaku MyPanel yang dapat direproduksi
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Jangan melaporkan kerentanan atau menyertakan secret di sini; gunakan GitHub Security Advisories.
+  - type: textarea
+    id: description
+    attributes:
+      label: Deskripsi
+      description: Apa yang terjadi dan apa yang Anda harapkan?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Langkah reproduksi
+      placeholder: Tuliskan langkah minimal yang konsisten mereproduksi masalah.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versi atau commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Lingkungan
+      description: Distro/versi Linux, Docker, Compose, browser, dan runtime Minecraft yang relevan.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log yang sudah disanitasi
+      description: Hapus token, cookie, password, alamat privat, data pemain, dan detail sensitif lain.
+      render: shell

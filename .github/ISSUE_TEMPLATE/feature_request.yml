@@ -1,0 +1,28 @@
+name: Feature request
+description: Usulkan peningkatan yang selaras dengan tujuan MyPanel
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Masalah pengguna
+      description: Masalah konkret apa yang perlu diselesaikan?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solusi yang diusulkan
+      description: Jelaskan alur, batasan, dan perilaku yang diharapkan.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif dan trade-off
+  - type: textarea
+    id: security
+    attributes:
+      label: Dampak keamanan dan operasi
+      description: Jelaskan perubahan permission, jaringan, data, backup, migrasi, atau resource host.

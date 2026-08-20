@@ -1,0 +1,146 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"time"
+)
+
+type agentClient struct {
+	baseURL *url.URL
+	http    *http.Client
+}
+
+func newAgentClient(cfg config) (*agentClient, error) {
+	baseURL, err := url.Parse(cfg.AgentURL)
+	if err != nil {
+		return nil, err
+	}
+	if baseURL.Scheme != "https" {
+		return nil, errors.New("AGENT_URL must use https")
+	}
+	caPEM, err := os.ReadFile(cfg.AgentCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("read agent CA: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("agent CA contains no certificate")
+	}
+	certificate, err := tls.LoadX509KeyPair(cfg.AgentCertFile, cfg.AgentKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load controller mTLS certificate: %w", err)
+	}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: pool, Certificates: []tls.Certificate{certificate}},
+		MaxIdleConns:    20, IdleConnTimeout: 30 * time.Second,
+	}
+	return &agentClient{baseURL: baseURL, http: &http.Client{Transport: transport, Timeout: 15 * time.Minute}}, nil
+}
+
+func (c *agentClient) health(ctx context.Context) error {
+	return c.do(ctx, http.MethodGet, "/v1/health", nil, nil)
+}
+
+func (c *agentClient) serverAction(ctx context.Context, serverID, action string, input, output any) error {
+	return c.do(ctx, http.MethodPost, "/v1/servers/"+url.PathEscape(serverID)+"/"+action, input, output)
+}
+
+func (c *agentClient) state(ctx context.Context, serverID string) (agentState, error) {
+	var out agentState
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/state", nil, &out)
+	return out, err
+}
+
+func (c *agentClient) logs(ctx context.Context, serverID string) (string, error) {
+	var out struct {
+		Logs string `json:"logs"`
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/logs", nil, &out)
+	return out.Logs, err
+}
+
+func (c *agentClient) command(ctx context.Context, serverID, command string) (string, error) {
+	var out struct {
+		Output string `json:"output"`
+	}
+	err := c.serverAction(ctx, serverID, "command", map[string]string{"command": command}, &out)
+	return out.Output, err
+}
+
+func (c *agentClient) files(ctx context.Context, serverID, filePath string) (json.RawMessage, error) {
+	var out json.RawMessage
+	query := url.Values{"path": []string{filePath}}
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/files?"+query.Encode(), nil, &out)
+	return out, err
+}
+
+func (c *agentClient) writeFile(ctx context.Context, serverID string, input any) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := c.do(ctx, http.MethodPut, "/v1/servers/"+url.PathEscape(serverID)+"/files", input, &out)
+	return out, err
+}
+
+func (c *agentClient) deleteFile(ctx context.Context, serverID, filePath string) error {
+	query := url.Values{"path": []string{filePath}}
+	return c.do(ctx, http.MethodDelete, "/v1/servers/"+url.PathEscape(serverID)+"/files?"+query.Encode(), nil, nil)
+}
+
+func (c *agentClient) deleteBackup(ctx context.Context, serverID, backupID string) error {
+	return c.do(ctx, http.MethodDelete, "/v1/servers/"+url.PathEscape(serverID)+"/backups/"+url.PathEscape(backupID), nil, nil)
+}
+
+func (c *agentClient) do(ctx context.Context, method, requestPath string, input, output any) error {
+	var body io.Reader
+	if input != nil {
+		data, err := json.Marshal(input)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(data)
+	}
+	relative, err := url.Parse(requestPath)
+	if err != nil {
+		return err
+	}
+	u := *c.baseURL
+	u.Path = path.Join(c.baseURL.Path, relative.Path)
+	u.RawQuery = relative.RawQuery
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
+	if err != nil {
+		return err
+	}
+	if input != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var apiErr apiError
+		if json.Unmarshal(data, &apiErr) == nil && apiErr.Error != "" {
+			return fmt.Errorf("agent: %s", apiErr.Error)
+		}
+		return fmt.Errorf("agent returned HTTP %d", resp.StatusCode)
+	}
+	if output != nil && len(data) > 0 {
+		return json.Unmarshal(data, output)
+	}
+	return nil
+}

@@ -13,6 +13,13 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 - Script update VM berbasis fast-forward dengan build, migrasi eksplisit,
   rollout Compose, readiness check, serta systemd timer opsional.
 
+### Fixed
+
+- Update yang gagal setelah fast-forward sekarang dicoba kembali sampai commit
+  tersebut berhasil melewati readiness check.
+- Container Minecraft dapat menyiapkan ownership data dan berpindah ke user
+  non-root dengan capability bootstrap minimum.
+
 ## [0.1.0] - 2026-08-20
 
 ### Added

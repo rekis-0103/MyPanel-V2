@@ -83,6 +83,7 @@ kerusakan disk atau kehilangan VM.
 ```sh
 docker compose config --quiet
 docker compose build
+docker compose run --rm migrate
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:8080/api/v1/health/ready

@@ -6,6 +6,13 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 ## [Unreleased]
 
+### Added
+
+- Pilihan Java 21 atau Java 25 per server, dengan image allowlist di agent dan
+  migrasi kompatibel untuk server lama.
+- Script update VM berbasis fast-forward dengan build, migrasi eksplisit,
+  rollout Compose, readiness check, serta systemd timer opsional.
+
 ## [0.1.0] - 2026-08-20
 
 ### Added

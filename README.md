@@ -15,8 +15,8 @@ Pterodactyl yang kompatibel langsung.
   rate limit login.
 - Provisioning asynchronous dan lifecycle start/stop/restart/delete dengan job
   durable serta reconciliation desired/observed state.
-- Runtime Vanilla, Paper, Purpur, Fabric, Forge, dan NeoForge dengan versi yang
-  dapat dipilih.
+- Runtime Vanilla, Paper, Purpur, Fabric, Forge, dan NeoForge dengan versi
+  Minecraft serta Java 21/25 yang dapat dipilih per server.
 - Alokasi port otomatis; limit CPU, total memory, JVM heap headroom, PID, dan
   kuota disk yang dipantau agent.
 - Console WebSocket interaktif, metrics, file manager terkurung pada root server,
@@ -73,8 +73,10 @@ curl --fail http://127.0.0.1:8080/api/v1/health/ready
 # Log terfokus
 docker compose logs --tail=200 controller agent
 
-# Terapkan image/source baru tanpa menghapus data
-docker compose up --build -d
+# Terapkan source lokal baru dan migrasinya tanpa menghapus data
+docker compose build
+docker compose run --rm migrate
+docker compose up -d
 
 # Hentikan stack; named volume dan world tetap dipertahankan
 docker compose down
@@ -83,6 +85,12 @@ docker compose down
 World dan backup berada di `/var/lib/mypanel`. PostgreSQL dan Redis memakai named
 volume Docker. Jangan menjalankan `docker compose down -v` kecuali memang ingin
 menghapus state database, session, dan sertifikat internal.
+
+Saat membuat server, pilih Java 21 untuk kompatibilitas luas atau Java 25 untuk
+server/plugin modern yang sudah mendukungnya. Image dapat dipin melalui
+`MINECRAFT_IMAGE_JAVA_21` dan `MINECRAFT_IMAGE_JAVA_25` di `.env`; browser tidak
+dapat memasukkan image arbitrary. Server yang sudah ada dimigrasikan ke Java 21
+agar perilakunya tidak berubah.
 
 ## Development dan quality gate
 
@@ -102,6 +110,22 @@ pnpm build
 Frontend dev server memakai `pnpm dev` dan mem-proxy `/api` ke controller pada
 `127.0.0.1:8080`. Untuk validasi deployment, jalankan
 `docker compose config --quiet` sebelum `docker compose up`.
+
+## Update dari GitHub
+
+Setelah versi yang diinginkan sudah tersedia pada branch GitHub yang dilacak,
+jalankan dari VM:
+
+```sh
+cd ~/MyPanel-V2
+sh scripts/update.sh
+```
+
+Script hanya menerima update fast-forward pada working tree bersih, memvalidasi
+Compose, membangun image baru, menjalankan migrasi secara eksplisit, mengganti
+container, lalu menunggu readiness. `.env`, secret, world, backup, serta named
+volume tidak diubah. Untuk update otomatis setiap lima menit, ikuti
+[runbook update VM](docs/runbooks/vm-updates.md).
 
 ## Dokumentasi proyek
 

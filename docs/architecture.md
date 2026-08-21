@@ -45,6 +45,9 @@
 - Java version is persisted per server and restricted to the controller/agent
   allowlist. The agent maps Java 21 and 25 to operator-configured image names;
   arbitrary container images never cross the browser trust boundary.
+- Minecraft containers drop every Linux capability, then add only `CHOWN`,
+  `SETGID`, and `SETUID` so the image entrypoint can prepare `/data` and switch
+  to its unprivileged `minecraft` user. `no-new-privileges` remains enabled.
 - Delete is a durable job. It stops and removes the managed container, and data
   is removed only when the request explicitly sets `purgeData: true`.
 - Hanya satu job aktif diizinkan per server. Operasi yang bersaing ditolak dan

@@ -17,6 +17,13 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	if got := host["Binds"].([]string)[0]; got != "/var/lib/mypanel/servers/id:/data" {
 		t.Fatalf("bind = %q", got)
 	}
+	if got := host["CapDrop"].([]string); len(got) != 1 || got[0] != "ALL" {
+		t.Fatalf("capability drop = %v", got)
+	}
+	capabilities := host["CapAdd"].([]string)
+	if got, want := strings.Join(capabilities, ","), "CHOWN,SETGID,SETUID"; got != want {
+		t.Fatalf("capability add = %q, want %q", got, want)
+	}
 	env := value["Env"].([]string)
 	foundHeap := false
 	for _, item := range env {

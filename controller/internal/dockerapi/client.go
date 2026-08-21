@@ -332,6 +332,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 			"RestartPolicy": map[string]string{"Name": "unless-stopped"},
 			"SecurityOpt":   []string{"no-new-privileges:true"},
 			"CapDrop":       []string{"ALL"},
+			"CapAdd":        []string{"CHOWN", "SETGID", "SETUID"},
 		},
 	}
 }

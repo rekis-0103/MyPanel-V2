@@ -19,12 +19,12 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	write(w, http.StatusOK, []map[string]any{
-		{"id": "vanilla", "name": "Vanilla", "java": 21},
-		{"id": "paper", "name": "Paper", "java": 21},
-		{"id": "purpur", "name": "Purpur", "java": 21},
-		{"id": "fabric", "name": "Fabric", "java": 21},
-		{"id": "forge", "name": "Forge", "java": 21},
-		{"id": "neoforge", "name": "NeoForge", "java": 21},
+		{"id": "vanilla", "name": "Vanilla", "java": 21, "javaVersions": []int{21, 25}},
+		{"id": "paper", "name": "Paper", "java": 21, "javaVersions": []int{21, 25}},
+		{"id": "purpur", "name": "Purpur", "java": 21, "javaVersions": []int{21, 25}},
+		{"id": "fabric", "name": "Fabric", "java": 21, "javaVersions": []int{21, 25}},
+		{"id": "forge", "name": "Forge", "java": 21, "javaVersions": []int{21, 25}},
+		{"id": "neoforge", "name": "NeoForge", "java": 21, "javaVersions": []int{21, 25}},
 	})
 }
 
@@ -48,8 +48,9 @@ func (a *app) serverCollection(w http.ResponseWriter, r *http.Request) {
 		if input.DiskMB == 0 {
 			input.DiskMB = 10240
 		}
+		input.JavaVersion = normalizeJavaVersion(input.JavaVersion)
 		if input.Name == "" || len(input.Name) > 48 || !runtimeOK(input.Runtime) ||
-			!versionPattern.MatchString(input.Version) || input.MemoryMB < 1024 || input.MemoryMB > 8192 ||
+			!versionPattern.MatchString(input.Version) || !javaVersionOK(input.JavaVersion) || input.MemoryMB < 1024 || input.MemoryMB > 8192 ||
 			input.CPU < 1 || input.CPU > a.cfg.NodeCPUs || input.DiskMB < 1024 || input.DiskMB > 102400 {
 			write(w, http.StatusBadRequest, apiError{Error: "invalid server configuration", Code: "invalid_server", RequestID: requestID(r.Context())})
 			return
@@ -237,6 +238,15 @@ func (a *app) auditCollection(w http.ResponseWriter, r *http.Request) {
 
 func runtimeOK(value string) bool {
 	return map[string]bool{"vanilla": true, "paper": true, "purpur": true, "fabric": true, "forge": true, "neoforge": true}[value]
+}
+
+func javaVersionOK(value int) bool { return value == 21 || value == 25 }
+
+func normalizeJavaVersion(value int) int {
+	if value == 0 {
+		return 21
+	}
+	return value
 }
 
 func validateServerConfig(input map[string]any) error {

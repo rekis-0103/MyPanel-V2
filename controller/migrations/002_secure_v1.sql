@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS allocations (
 
 INSERT INTO allocations (id, node_id, server_id, bind_ip, port)
 SELECT gen_random_uuid(), node_id, id, bind_ip, port FROM servers
+WHERE deleted_at IS NULL
 ON CONFLICT (node_id, bind_ip, port) DO NOTHING;
 
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;

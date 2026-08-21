@@ -62,6 +62,7 @@ button.danger.ghost { color: var(--red); background: transparent; }
 
 label { display: grid; gap: 7px; margin: 13px 0; color: #c5d2cc; font-size: .78rem; font-weight: 700; }
 label small { color: #698076; font-weight: 500; }
+.form-help { display: block; margin: -5px 0 10px; color: #80958b; font-size: .7rem; line-height: 1.5; }
 input, select, textarea { width: 100%; min-height: 41px; padding: 9px 11px; border: 1px solid #31483e; border-radius: 8px; color: #edf7f2; background: #0b1411; }
 textarea { resize: vertical; }
 .form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

@@ -17,7 +17,8 @@ mengirim `X-CSRF-Token`, dan origin browser harus sama dengan `TRUSTED_ORIGIN`.
 
 - `GET /api/v1/health/live` — liveness process.
 - `GET /api/v1/health/ready` — status PostgreSQL, Redis, dan agent.
-- `GET /api/v1/catalog` — runtime Minecraft yang didukung.
+- `GET /api/v1/catalog` — runtime Minecraft dan pilihan `javaVersions` yang
+  didukung.
 
 ## Servers dan jobs
 
@@ -30,6 +31,11 @@ mengirim `X-CSRF-Token`, dan origin browser harus sama dengan `TRUSTED_ORIGIN`.
 Create, lifecycle, config, backup, restore, dan delete adalah operasi
 asynchronous. Respons `202 Accepted` berisi objek `job`; UI dapat memantau status
 `queued`, `running`, `completed`, atau `failed` melalui endpoint job/server.
+
+Create server menerima `javaVersion` bernilai `21` atau `25`. Nilai kosong dari
+client lama dianggap `21`. Respons server selalu menyertakan `javaVersion`.
+Nama/tag image tidak pernah diterima dari browser; agent memetakan versi yang
+sudah divalidasi ke image yang dikonfigurasi operator.
 
 ## Runtime features
 

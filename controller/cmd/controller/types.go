@@ -13,6 +13,7 @@ type server struct {
 	Name         string          `json:"name"`
 	Runtime      string          `json:"runtime"`
 	Version      string          `json:"version"`
+	JavaVersion  int             `json:"javaVersion"`
 	MemoryMB     int             `json:"memoryMb"`
 	CPU          int             `json:"cpu"`
 	DiskMB       int             `json:"diskMb"`
@@ -28,12 +29,13 @@ type server struct {
 }
 
 type createServerInput struct {
-	Name     string `json:"name"`
-	Runtime  string `json:"runtime"`
-	Version  string `json:"version"`
-	MemoryMB int    `json:"memoryMb"`
-	CPU      int    `json:"cpu"`
-	DiskMB   int    `json:"diskMb"`
+	Name        string `json:"name"`
+	Runtime     string `json:"runtime"`
+	Version     string `json:"version"`
+	JavaVersion int    `json:"javaVersion"`
+	MemoryMB    int    `json:"memoryMb"`
+	CPU         int    `json:"cpu"`
+	DiskMB      int    `json:"diskMb"`
 }
 
 type job struct {
@@ -91,15 +93,16 @@ type sessionRecord struct {
 }
 
 type agentServerSpec struct {
-	ID       string          `json:"id"`
-	Runtime  string          `json:"runtime"`
-	Version  string          `json:"version"`
-	MemoryMB int             `json:"memoryMb"`
-	CPU      int             `json:"cpu"`
-	DiskMB   int             `json:"diskMb"`
-	BindIP   string          `json:"bindIp"`
-	Port     int             `json:"port"`
-	Config   json.RawMessage `json:"config"`
+	ID          string          `json:"id"`
+	Runtime     string          `json:"runtime"`
+	Version     string          `json:"version"`
+	JavaVersion int             `json:"javaVersion"`
+	MemoryMB    int             `json:"memoryMb"`
+	CPU         int             `json:"cpu"`
+	DiskMB      int             `json:"diskMb"`
+	BindIP      string          `json:"bindIp"`
+	Port        int             `json:"port"`
+	Config      json.RawMessage `json:"config"`
 }
 
 type agentState struct {

@@ -16,6 +16,7 @@ export type Server = {
   name: string;
   runtime: string;
   version: string;
+  javaVersion: 21 | 25;
   memoryMb: number;
   cpu: number;
   diskMb: number;
@@ -73,7 +74,7 @@ export type Metrics = {
   players: number;
 };
 
-export type Runtime = { id: string; name: string; java: number };
+export type Runtime = { id: string; name: string; java: number; javaVersions: Array<21 | 25> };
 export type Session = { username: string; role: string; csrfToken: string };
 export type ActionResponse = { server: Server; job: Job };
 

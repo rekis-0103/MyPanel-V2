@@ -26,3 +26,19 @@ func TestValidateServerConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestJavaVersionAllowlist(t *testing.T) {
+	if got := normalizeJavaVersion(0); got != 21 {
+		t.Fatalf("legacy default = %d, want 21", got)
+	}
+	for _, value := range []int{21, 25} {
+		if !javaVersionOK(value) {
+			t.Fatalf("Java %d should be supported", value)
+		}
+	}
+	for _, value := range []int{0, 8, 17, 24, 26} {
+		if javaVersionOK(value) {
+			t.Fatalf("Java %d should be rejected", value)
+		}
+	}
+}

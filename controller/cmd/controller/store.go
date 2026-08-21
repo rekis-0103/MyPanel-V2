@@ -97,7 +97,7 @@ FROM servers WHERE deleted_at IS NULL`).Scan(&memoryUsed, &cpuUsed); err != nil 
 		return server{}, errCapacity
 	}
 	var port int
-	if err := tx.QueryRow(ctx, `SELECT candidate FROM generate_series($1,$2) candidate
+	if err := tx.QueryRow(ctx, `SELECT candidate FROM generate_series($1::integer,$2::integer) candidate
 WHERE NOT EXISTS (SELECT 1 FROM allocations WHERE node_id=$3 AND bind_ip=$4 AND port=candidate)
 ORDER BY candidate LIMIT 1`, cfg.PortStart, cfg.PortEnd, defaultNodeID, cfg.BindIP).Scan(&port); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

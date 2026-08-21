@@ -58,7 +58,12 @@ fi
 
 current_commit=$(git rev-parse HEAD)
 target_commit=$(git rev-parse "$remote_ref")
-if [ "$current_commit" = "$target_commit" ] && [ "${MYPANEL_UPDATE_FORCE:-0}" != "1" ]; then
+deployment_marker=$(git rev-parse --git-path mypanel-deployed)
+deployed_commit=
+if [ -f "$deployment_marker" ]; then
+  IFS= read -r deployed_commit < "$deployment_marker" || true
+fi
+if [ "$current_commit" = "$target_commit" ] && [ "$deployed_commit" = "$target_commit" ] && [ "${MYPANEL_UPDATE_FORCE:-0}" != "1" ]; then
   printf 'MyPanel is already current at %s.\n' "$(git rev-parse --short HEAD)"
   exit 0
 fi
@@ -86,6 +91,11 @@ until docker compose exec -T web wget -qO- http://127.0.0.1:8080/api/v1/health/r
   fi
   sleep 2
 done
+
+umask 077
+marker_tmp=$deployment_marker.tmp.$$
+printf '%s\n' "$target_commit" > "$marker_tmp"
+mv "$marker_tmp" "$deployment_marker"
 
 printf 'MyPanel updated successfully to %s.\n' "$(git rev-parse --short HEAD)"
 docker compose ps

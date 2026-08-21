@@ -23,8 +23,9 @@ Script menolak kondisi berikut agar update tidak menimpa pekerjaan lokal:
 Urutan rollout adalah fetch, fast-forward, validasi Compose, build image,
 migrasi additive/idempotent, penggantian container, dan readiness check selama
 maksimal 60 detik. Jika build gagal, container lama tetap berjalan. Jika rollout
-atau readiness gagal, periksa output dan log yang dicetak script sebelum mencoba
-perubahan lain.
+atau readiness gagal, commit tersebut belum ditandai berhasil dan timer akan
+mencoba rollout kembali. Periksa output dan log yang dicetak script sebelum
+mencoba perubahan lain.
 
 Status dan log dapat diperiksa dengan:
 

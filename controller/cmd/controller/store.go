@@ -27,7 +27,7 @@ func openStore(ctx context.Context, databaseURL string) (*store, error) {
 	return &store{db: db}, nil
 }
 
-const serverColumns = `s.id, s.node_id, s.name, s.runtime, s.version, s.memory_mb,
+const serverColumns = `s.id, s.node_id, s.name, s.runtime, s.version, s.java_version, s.memory_mb,
  s.cpu, s.disk_mb, s.bind_ip, s.port, s.desired_state, s.observed_state,
  s.config, s.last_error, s.created_at, s.updated_at`
 
@@ -35,7 +35,7 @@ type rowScanner interface{ Scan(...any) error }
 
 func scanServer(row rowScanner) (server, error) {
 	var item server
-	err := row.Scan(&item.ID, &item.NodeID, &item.Name, &item.Runtime, &item.Version,
+	err := row.Scan(&item.ID, &item.NodeID, &item.Name, &item.Runtime, &item.Version, &item.JavaVersion,
 		&item.MemoryMB, &item.CPU, &item.DiskMB, &item.BindIP, &item.Port,
 		&item.DesiredState, &item.State, &item.Config, &item.LastError,
 		&item.CreatedAt, &item.UpdatedAt)
@@ -107,15 +107,15 @@ ORDER BY candidate LIMIT 1`, cfg.PortStart, cfg.PortEnd, defaultNodeID, cfg.Bind
 	}
 	item := server{
 		ID: uuid.NewString(), NodeID: defaultNodeID, Name: in.Name, Runtime: in.Runtime,
-		Version: in.Version, MemoryMB: in.MemoryMB, CPU: in.CPU, DiskMB: in.DiskMB,
+		Version: in.Version, JavaVersion: in.JavaVersion, MemoryMB: in.MemoryMB, CPU: in.CPU, DiskMB: in.DiskMB,
 		BindIP: cfg.BindIP, Port: port, DesiredState: "offline", State: "installing",
 		Config: json.RawMessage(`{}`),
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO servers
-(id,node_id,name,runtime,version,memory_mb,cpu,disk_mb,bind_ip,port,desired_state,observed_state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'offline','installing')
+(id,node_id,name,runtime,version,java_version,memory_mb,cpu,disk_mb,bind_ip,port,desired_state,observed_state)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'offline','installing')
 RETURNING created_at,updated_at`, item.ID, item.NodeID, item.Name, item.Runtime,
-		item.Version, item.MemoryMB, item.CPU, item.DiskMB, item.BindIP, item.Port).
+		item.Version, item.JavaVersion, item.MemoryMB, item.CPU, item.DiskMB, item.BindIP, item.Port).
 		Scan(&item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return server{}, err

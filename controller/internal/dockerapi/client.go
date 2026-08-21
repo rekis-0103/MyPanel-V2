@@ -16,14 +16,14 @@ import (
 )
 
 type Client struct {
-	http  *http.Client
-	image string
+	http *http.Client
 }
 
 type Spec struct {
 	ID       string
 	Runtime  string
 	Version  string
+	Image    string
 	MemoryMB int
 	CPU      int
 	BindIP   string
@@ -38,11 +38,11 @@ type State struct {
 	MemoryBytes int64   `json:"memoryBytes"`
 }
 
-func New(socket, image string) *Client {
+func New(socket string) *Client {
 	if socket == "" {
 		socket = "/var/run/docker.sock"
 	}
-	return &Client{image: image, http: &http.Client{
+	return &Client{http: &http.Client{
 		Timeout: 15 * time.Minute,
 		Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socket)
@@ -51,6 +51,9 @@ func New(socket, image string) *Client {
 }
 
 func (c *Client) Provision(ctx context.Context, spec Spec) error {
+	if spec.Image == "" {
+		return errors.New("Minecraft image is required")
+	}
 	status, _, err := c.request(ctx, http.MethodGet, "/containers/"+Name(spec.ID)+"/json", nil)
 	if err != nil {
 		return err
@@ -65,10 +68,10 @@ func (c *Client) Provision(ctx context.Context, spec Spec) error {
 	} else if status != http.StatusNotFound {
 		return fmt.Errorf("inspect managed container: Docker returned %d", status)
 	}
-	if err := c.pull(ctx); err != nil {
+	if err := c.pull(ctx, spec.Image); err != nil {
 		return err
 	}
-	body, err := json.Marshal(ContainerSpec(c.image, spec))
+	body, err := json.Marshal(ContainerSpec(spec.Image, spec))
 	if err != nil {
 		return err
 	}
@@ -259,8 +262,8 @@ func (c *Client) Command(ctx context.Context, id, command string) (string, error
 	return strings.TrimSpace(string(body)), nil
 }
 
-func (c *Client) pull(ctx context.Context) error {
-	status, body, err := c.request(ctx, http.MethodPost, "/images/create?fromImage="+url.QueryEscape(c.image), nil)
+func (c *Client) pull(ctx context.Context, image string) error {
+	status, body, err := c.request(ctx, http.MethodPost, "/images/create?fromImage="+url.QueryEscape(image), nil)
 	if err != nil {
 		return err
 	}

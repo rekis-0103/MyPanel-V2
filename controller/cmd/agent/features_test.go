@@ -63,3 +63,14 @@ func TestValidateAgentConfig(t *testing.T) {
 		t.Fatal("unsupported configuration was accepted")
 	}
 }
+
+func TestValidateSpecRejectsUnsupportedJava(t *testing.T) {
+	valid := serverSpec{ID: testServerID, Runtime: "paper", Version: "1.21.11", JavaVersion: 25, MemoryMB: 2048, CPU: 2, DiskMB: 10240, BindIP: "0.0.0.0", Port: 25565, Config: map[string]any{}}
+	if err := validateSpec(testServerID, valid); err != nil {
+		t.Fatalf("Java 25 specification rejected: %v", err)
+	}
+	valid.JavaVersion = 24
+	if err := validateSpec(testServerID, valid); err == nil {
+		t.Fatal("unsupported Java version was accepted")
+	}
+}

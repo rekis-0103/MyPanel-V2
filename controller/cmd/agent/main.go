@@ -27,7 +27,7 @@ type config struct {
 	DataRoot   string
 	BackupRoot string
 	MetaRoot   string
-	Image      string
+	JavaImages map[int]string
 	DockerSock string
 }
 
@@ -37,15 +37,16 @@ type agent struct {
 }
 
 type serverSpec struct {
-	ID       string         `json:"id"`
-	Runtime  string         `json:"runtime"`
-	Version  string         `json:"version"`
-	MemoryMB int            `json:"memoryMb"`
-	CPU      int            `json:"cpu"`
-	DiskMB   int            `json:"diskMb"`
-	BindIP   string         `json:"bindIp"`
-	Port     int            `json:"port"`
-	Config   map[string]any `json:"config"`
+	ID          string         `json:"id"`
+	Runtime     string         `json:"runtime"`
+	Version     string         `json:"version"`
+	JavaVersion int            `json:"javaVersion"`
+	MemoryMB    int            `json:"memoryMb"`
+	CPU         int            `json:"cpu"`
+	DiskMB      int            `json:"diskMb"`
+	BindIP      string         `json:"bindIp"`
+	Port        int            `json:"port"`
+	Config      map[string]any `json:"config"`
 }
 
 type apiError struct {
@@ -61,8 +62,11 @@ func main() {
 		Addr: env("AGENT_ADDR", ":8081"), TLSCert: env("AGENT_TLS_CERT_FILE", "/run/mypanel-certs/agent.crt"),
 		TLSKey: env("AGENT_TLS_KEY_FILE", "/run/mypanel-certs/agent.key"), TLSCA: env("AGENT_TLS_CA_FILE", "/run/mypanel-certs/ca.crt"),
 		DataRoot: env("AGENT_DATA_ROOT", "/var/lib/mypanel/servers"), BackupRoot: env("AGENT_BACKUP_ROOT", "/var/lib/mypanel/backups"),
-		MetaRoot: env("AGENT_META_ROOT", "/var/lib/mypanel/meta"),
-		Image:    env("MINECRAFT_IMAGE", "itzg/minecraft-server:java21"), DockerSock: env("DOCKER_SOCKET", "/var/run/docker.sock"),
+		MetaRoot: env("AGENT_META_ROOT", "/var/lib/mypanel/meta"), DockerSock: env("DOCKER_SOCKET", "/var/run/docker.sock"),
+		JavaImages: map[int]string{
+			21: env("MINECRAFT_IMAGE_JAVA_21", env("MINECRAFT_IMAGE", "itzg/minecraft-server:java21")),
+			25: env("MINECRAFT_IMAGE_JAVA_25", "itzg/minecraft-server:java25"),
+		},
 	}
 	if err := os.MkdirAll(cfg.DataRoot, 0750); err != nil {
 		log.Fatalf("create data root: %v", err)
@@ -77,7 +81,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure mTLS: %v", err)
 	}
-	a := &agent{cfg: cfg, docker: dockerapi.New(cfg.DockerSock, cfg.Image)}
+	a := &agent{cfg: cfg, docker: dockerapi.New(cfg.DockerSock)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", a.health)
 	mux.HandleFunc("/v1/servers/", a.server)
@@ -145,6 +149,7 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err := a.docker.Provision(ctx, dockerapi.Spec{ID: id, Runtime: input.Runtime, Version: input.Version,
+			Image:    a.cfg.JavaImages[input.JavaVersion],
 			MemoryMB: input.MemoryMB, CPU: input.CPU, BindIP: input.BindIP, Port: input.Port,
 			DataPath: dataPath, Config: input.Config})
 		if err != nil {
@@ -265,7 +270,7 @@ func validateSpec(pathID string, input serverSpec) error {
 	if input.ID != pathID || !map[string]bool{"vanilla": true, "paper": true, "purpur": true, "fabric": true, "forge": true, "neoforge": true}[input.Runtime] {
 		return errors.New("server identity or runtime is invalid")
 	}
-	if !versionPattern.MatchString(input.Version) || input.MemoryMB < 1024 || input.MemoryMB > 8192 || input.CPU < 1 || input.CPU > 64 || input.DiskMB < 1024 || input.DiskMB > 102400 || input.Port < 1 || input.Port > 65535 {
+	if !versionPattern.MatchString(input.Version) || (input.JavaVersion != 21 && input.JavaVersion != 25) || input.MemoryMB < 1024 || input.MemoryMB > 8192 || input.CPU < 1 || input.CPU > 64 || input.DiskMB < 1024 || input.DiskMB > 102400 || input.Port < 1 || input.Port > 65535 {
 		return errors.New("server resource specification is invalid")
 	}
 	if input.BindIP == "" || strings.ContainsAny(input.BindIP, "/\\\x00") {

@@ -139,7 +139,9 @@ services:
       AGENT_DATA_ROOT: /var/lib/mypanel/servers
       AGENT_BACKUP_ROOT: /var/lib/mypanel/backups
       AGENT_META_ROOT: /var/lib/mypanel/meta
-      MINECRAFT_IMAGE: ${MINECRAFT_IMAGE:-itzg/minecraft-server:java21}
+      MINECRAFT_IMAGE: ${MINECRAFT_IMAGE:-}
+      MINECRAFT_IMAGE_JAVA_21: ${MINECRAFT_IMAGE_JAVA_21:-}
+      MINECRAFT_IMAGE_JAVA_25: ${MINECRAFT_IMAGE_JAVA_25:-itzg/minecraft-server:java25}
       DOCKER_SOCKET: /var/run/docker.sock
     user: "0:0"
     volumes:

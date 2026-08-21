@@ -47,7 +47,7 @@ func (a *app) executeJob(parent context.Context, item job) {
 	if transition != "" {
 		_ = a.store.setObservedState(ctx, item.ServerID, transition, nil)
 	}
-	spec := agentServerSpec{ID: serverItem.ID, Runtime: serverItem.Runtime, Version: serverItem.Version,
+	spec := agentServerSpec{ID: serverItem.ID, Runtime: serverItem.Runtime, Version: serverItem.Version, JavaVersion: serverItem.JavaVersion,
 		MemoryMB: serverItem.MemoryMB, CPU: serverItem.CPU, DiskMB: serverItem.DiskMB,
 		BindIP: serverItem.BindIP, Port: serverItem.Port, Config: serverItem.Config}
 	var result any = map[string]any{}

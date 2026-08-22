@@ -6,5 +6,6 @@ export function formatBytes(bytes: number) {
 }
 
 export function formatDate(value: string) {
-  return new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  const locale = localStorage.getItem('mypanel.locale') === 'en' ? 'en-US' : 'id-ID';
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }

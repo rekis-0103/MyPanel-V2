@@ -357,7 +357,7 @@ func (a *app) pollConsoleEvents(ctx context.Context, serverID string, updates ch
 	defer ticker.Stop()
 	var afterID int64
 	for {
-		items, err := a.store.consoleEvents(ctx, serverID, afterID, 100)
+		items, err := a.store.consoleEvents(ctx, serverID, afterID, consoleEventRetention)
 		if err == nil {
 			for _, item := range items {
 				select {

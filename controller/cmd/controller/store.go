@@ -16,6 +16,8 @@ import (
 
 type store struct{ db *pgxpool.Pool }
 
+const consoleEventRetention = 200
+
 func openStore(ctx context.Context, databaseURL string) (*store, error) {
 	db, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -336,8 +338,8 @@ func (s *store) addConsoleEvent(ctx context.Context, serverID, message string) e
 		return err
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM server_console_events WHERE server_id=$1 AND id NOT IN (
-  SELECT id FROM server_console_events WHERE server_id=$1 ORDER BY id DESC LIMIT 200
-)`, serverID); err != nil {
+  SELECT id FROM server_console_events WHERE server_id=$1 ORDER BY id DESC LIMIT $2
+)`, serverID, consoleEventRetention); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

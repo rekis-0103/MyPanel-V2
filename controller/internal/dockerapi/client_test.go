@@ -73,6 +73,25 @@ func TestCalculateStatsUsesCgroupV2InactiveFileAndHostCPU(t *testing.T) {
 	}
 }
 
+func TestStatsWaitsForAnAccurateCPUSample(t *testing.T) {
+	var path string
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		path = request.URL.RequestURI()
+		body := `{"memory_stats":{"usage":800,"stats":{"inactive_file":300}},"cpu_stats":{"cpu_usage":{"total_usage":300},"system_cpu_usage":1100,"online_cpus":8},"precpu_stats":{"cpu_usage":{"total_usage":100},"system_cpu_usage":100}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+	result, err := client.stats(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(path, "one-shot") || path != "/containers/mypanel-serverid/stats?stream=false" {
+		t.Fatalf("stats request path = %q", path)
+	}
+	if result.CPUPercent != 160 {
+		t.Fatalf("CPU percent = %v, want 160", result.CPUPercent)
+	}
+}
+
 func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	var create map[string]any
 	requests := 0

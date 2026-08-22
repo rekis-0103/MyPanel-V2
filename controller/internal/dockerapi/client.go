@@ -189,7 +189,7 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 }
 
 func (c *Client) stats(ctx context.Context, id string) (State, error) {
-	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/stats?stream=false&one-shot=true", nil)
+	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/stats?stream=false", nil)
 	if err != nil {
 		return State{}, err
 	}

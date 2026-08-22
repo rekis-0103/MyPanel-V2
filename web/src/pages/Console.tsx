@@ -130,11 +130,51 @@ const minecraftColors: Record<string, string> = {
   k: '', l: '1', m: '9', n: '4', o: '3', r: '0',
 };
 
-export function sanitizeTerminalText(value: string) {
+const miniMessageColors: Record<string, string> = {
+  black: '30', dark_blue: '34', dark_green: '32', dark_aqua: '36', dark_red: '31', dark_purple: '35', gold: '33', gray: '37', grey: '37',
+  dark_gray: '90', dark_grey: '90', blue: '94', green: '92', aqua: '96', red: '91', light_purple: '95', yellow: '93', white: '97',
+};
+
+const miniMessageDecorations: Record<string, string> = { bold: '1', italic: '3', underlined: '4', underline: '4', strikethrough: '9', reset: '0' };
+
+function trueColor(hex: string) {
+  const value = hex.replace('#', '');
+  const red = Number.parseInt(value.slice(0, 2), 16); const green = Number.parseInt(value.slice(2, 4), 16); const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `\x1b[38;2;${red};${green};${blue}m`;
+}
+
+export function translatePluginFormatting(value: string) {
+  const marker = '(?:\\u00c2?\\u00a7|&)';
+  const legacyHex = new RegExp(`${marker}x((?:${marker}[0-9a-f]){6})`, 'gi');
+  const miniMessageStack: Array<{ name: string; code: string }> = [];
   return value
+    .replace(legacyHex, (_match, sequence: string) => trueColor((sequence.match(/[0-9a-f]/gi) ?? []).join('')))
+    .replace(/(?:\u00c2?\u00a7)([0-9a-fk-or])/gi, (_match, code: string) => minecraftColors[code.toLowerCase()] ? `\x1b[${minecraftColors[code.toLowerCase()]}m` : '')
+    .replace(/(^|[\s:;,([{])((?:&[0-9a-fk-or])+)(?=\S)/gi, (_match, prefix: string, sequence: string) => `${prefix}${sequence.replace(/&([0-9a-fk-or])/gi, (_code: string, code: string) => minecraftColors[code.toLowerCase()] ? `\x1b[${minecraftColors[code.toLowerCase()]}m` : '')}`)
+    .replace(/<(\/)?([a-z_]+|#[0-9a-f]{6})>/gi, (tag, closing: string | undefined, name: string) => {
+      const normalized = name.toLowerCase();
+      if (closing) {
+        const index = miniMessageStack.map((item) => item.name).lastIndexOf(normalized);
+        if (index < 0) return tag;
+        miniMessageStack.splice(index, 1);
+        return `\x1b[0m${miniMessageStack.map((item) => `\x1b[${item.code}m`).join('')}`;
+      }
+      if (normalized === 'reset') { miniMessageStack.length = 0; return '\x1b[0m'; }
+      if (/^#[0-9a-f]{6}$/.test(normalized)) {
+        const value = normalized.replace('#', '');
+        const code = `38;2;${Number.parseInt(value.slice(0, 2), 16)};${Number.parseInt(value.slice(2, 4), 16)};${Number.parseInt(value.slice(4, 6), 16)}`;
+        miniMessageStack.push({ name: normalized, code }); return `\x1b[${code}m`;
+      }
+      const code = miniMessageColors[normalized] ?? miniMessageDecorations[normalized];
+      if (!code) return tag;
+      miniMessageStack.push({ name: normalized, code }); return `\x1b[${code}m`;
+    });
+}
+
+export function sanitizeTerminalText(value: string) {
+  return translatePluginFormatting(value)
     .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
     .replace(/(?:\x1b\[|\x9b)([0-?]*)([ -/]*)([@-~])/g, (_sequence, parameters: string, intermediate: string, final: string) => final === 'm' && intermediate === '' && /^[0-9;]*$/.test(parameters) ? `\x1b[${parameters}m` : '')
     .replace(/\x1b(?!\[[0-9;]*m)[ -/]*[@-~]/g, '')
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f-\x9f]/g, '')
-    .replace(/§([0-9a-fk-or])/gi, (_match, code: string) => minecraftColors[code.toLowerCase()] ? `\x1b[${minecraftColors[code.toLowerCase()]}m` : '');
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f-\x9f]/g, '');
 }

@@ -39,6 +39,21 @@ describe('sanitizeTerminalText', () => {
   it('converts Minecraft color codes to terminal colors', () => {
     expect(sanitizeTerminalText('§aReady §cError')).toBe('\x1b[92mReady \x1b[91mError');
   });
+
+  it('converts legacy ampersand and RGB color codes used by plugins', () => {
+    expect(sanitizeTerminalText('&a&lReady &x&5&5&f&f&5&5Mint')).toBe('\x1b[92m\x1b[1mReady \x1b[38;2;85;255;85mMint');
+    expect(sanitizeTerminalText('R&D remains ordinary text')).toBe('R&D remains ordinary text');
+  });
+
+  it('converts MiniMessage named, RGB, and decoration tags', () => {
+    expect(sanitizeTerminalText('<red>Error</red> <#55ff55><bold>Ready</bold> still green</#55ff55>'))
+      .toBe('\x1b[91mError\x1b[0m \x1b[38;2;85;255;85m\x1b[1mReady\x1b[0m\x1b[38;2;85;255;85m still green\x1b[0m');
+  });
+
+  it('preserves plugin ANSI true color while rejecting non-color controls', () => {
+    expect(sanitizeTerminalText('\x1b[38;2;120;40;220mPurple\x1b[0m\x1b[2J'))
+      .toBe('\x1b[38;2;120;40;220mPurple\x1b[0m');
+  });
 });
 
 describe('renderConsoleText', () => {
@@ -63,5 +78,12 @@ describe('renderConsoleText', () => {
 
   it('colors plugin tags independently from normal messages', () => {
     expect(renderConsoleText('[06:59:00 INFO]: [spark] Starting profiler\n')).toContain('\x1b[95m[spark]\x1b[37m');
+  });
+
+  it('does not flatten colors embedded in plugin messages', () => {
+    const rendered = renderConsoleText('[06:59:00 INFO]: [Plugin] <gold>Gold</gold> &bAqua §cRed\n');
+    expect(rendered).toContain('\x1b[33mGold\x1b[0m');
+    expect(rendered).toContain('\x1b[96mAqua');
+    expect(rendered).toContain('\x1b[91mRed');
   });
 });

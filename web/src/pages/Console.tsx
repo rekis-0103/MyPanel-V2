@@ -1,5 +1,5 @@
 import { FitAddon } from '@xterm/addon-fit';
-import { Terminal as XTerminal } from '@xterm/xterm';
+import { Terminal as XTerminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { Pause, Play, RotateCcw, Send, Square } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -21,14 +21,18 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
   const [connection, setConnection] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [paused, setPaused] = useState(false); const pausedRef = useRef(false); const [result, setResult] = useState('');
   const [metrics, setMetrics] = useState<Metrics | null>(null); const [history, setHistory] = useState<History>({ cpu: [], memory: [], disk: [] });
+  const [runtimeState, setRuntimeState] = useState(server.state);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { setRuntimeState(server.state); }, [server.state]);
   useEffect(() => {
     if (!host.current) return;
-    const term = new XTerminal({ convertEol: true, disableStdin: true, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, lineHeight: 1.45, cursorBlink: false, scrollback: 5000, theme: { background: '#0D1117', foreground: '#C9D1D9', cursor: '#3FB950', selectionBackground: '#264f36', black: '#484F58', red: '#F85149', green: '#3FB950', yellow: '#D29922', blue: '#58A6FF', magenta: '#BC8CFF', cyan: '#39C5CF', white: '#E6EDF3', brightBlack: '#6E7681', brightRed: '#FF7B72', brightGreen: '#56D364', brightYellow: '#E3B341', brightBlue: '#79C0FF', brightMagenta: '#D2A8FF', brightCyan: '#56D4DD', brightWhite: '#FFFFFF' } });
+    const term = new XTerminal({ convertEol: true, disableStdin: true, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, lineHeight: 1.45, cursorBlink: false, scrollback: 5000, theme: consoleTerminalTheme(currentTheme()) });
     const fit = new FitAddon(); term.loadAddon(fit); term.open(host.current); fit.fit(); terminal.current = term;
     const resize = new ResizeObserver(() => fit.fit()); resize.observe(host.current);
+    const themeObserver = new MutationObserver(() => { term.options.theme = consoleTerminalTheme(currentTheme()); });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     const scroll = term.onScroll(() => { const isPaused = term.buffer.active.viewportY < term.buffer.active.baseY; pausedRef.current = isPaused; setPaused(isPaused); });
-    return () => { if (writeFrame.current !== null) window.cancelAnimationFrame(writeFrame.current); writeQueue.current = []; scroll.dispose(); resize.disconnect(); term.dispose(); terminal.current = null; };
+    return () => { if (writeFrame.current !== null) window.cancelAnimationFrame(writeFrame.current); writeQueue.current = []; themeObserver.disconnect(); scroll.dispose(); resize.disconnect(); term.dispose(); terminal.current = null; };
   }, []);
   useEffect(() => {
     let active = true; let retry: number | undefined;
@@ -51,7 +55,7 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
         const message = JSON.parse(event.data);
         if (message.type === 'log') enqueue({ text: renderConsoleText(String(message.logs ?? '')), reset: message.reset === true, follow: !pausedRef.current });
         if (message.type === 'status' && message.metrics) {
-          const next = message.metrics as Metrics; setMetrics(next);
+          const next = message.metrics as Metrics; setMetrics(next); if (typeof message.state === 'string') setRuntimeState(message.state as Server['state']);
           setHistory((current) => ({ cpu: appendSample(current.cpu, next.cpuPercent), memory: appendSample(current.memory, next.memoryBytes), disk: appendSample(current.disk, next.diskBytes) }));
         }
         if (message.type === 'command-result') { const value = String(message.error || message.output || tr('Command selesai.', 'Command completed.')); setResult(value); enqueue({ text: `\r\n${message.error ? '\x1b[31m' : '\x1b[90m'}${sanitizeTerminalText(value)}\x1b[0m\r\n`, reset: false, follow: true }); }
@@ -66,10 +70,10 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
     if (!command || socket.current?.readyState !== WebSocket.OPEN) return;
     socket.current.send(JSON.stringify({ type: 'command', command, csrfToken })); form.reset(); setResult(tr('Mengirim command…', 'Sending command…'));
   };
-  const running = server.state === 'running';
+  const running = canSendConsoleCommand(runtimeState); const starting = runtimeState === 'starting';
   const connectionLabel = { connecting: tr('menghubungkan', 'connecting'), connected: tr('terhubung', 'connected'), disconnected: tr('terputus', 'disconnected') }[connection];
   return <section className="surface console-page">
-    <header className="console-header"><div><span>{serverAddress(server.bindIp, server.port)}</span><h1>{server.name}</h1></div><StatusBadge status={normalizeStatus(server.state)} /><div className="console-actions">{running ? <><ActionButton size="sm" variant="danger" icon={Square} loading={busy} onClick={() => act(server, 'stop')}>{tr('Stop', 'Stop')}</ActionButton><ActionButton size="sm" variant="secondary" icon={RotateCcw} loading={busy} onClick={() => act(server, 'restart')}>{tr('Restart', 'Restart')}</ActionButton></> : <ActionButton size="sm" icon={Play} loading={busy} onClick={() => act(server, 'start')}>{tr('Mulai', 'Start')}</ActionButton>}</div></header>
+    <header className="console-header"><div><span>{serverAddress(server.bindIp, server.port)}</span><h1>{server.name}</h1></div><StatusBadge status={normalizeStatus(runtimeState)} /><div className="console-actions">{running || starting ? <><ActionButton size="sm" variant="danger" icon={Square} loading={busy} onClick={() => act(server, 'stop')}>{tr('Stop', 'Stop')}</ActionButton>{running && <ActionButton size="sm" variant="secondary" icon={RotateCcw} loading={busy} onClick={() => act(server, 'restart')}>{tr('Restart', 'Restart')}</ActionButton>}</> : <ActionButton size="sm" icon={Play} loading={busy} onClick={() => act(server, 'start')}>{tr('Mulai', 'Start')}</ActionButton>}</div></header>
     <div className="console-metrics">
       <MetricChart label="CPU" value={metrics?.cpuPercent ?? 0} max={server.cpu * 100} history={history.cpu} detail={`${((metrics?.cpuPercent ?? 0) / 100).toFixed(2)} / ${server.cpu} vCPU`} />
       <MetricChart label="RAM" value={metrics?.memoryBytes ?? 0} max={server.memoryMb * 1024 * 1024} history={history.memory} detail={`${formatBytes(metrics?.memoryBytes ?? 0)} / ${formatBytes(server.memoryMb * 1024 * 1024)}`} formatValue={formatBytes} />
@@ -77,9 +81,20 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
     </div>
     <div className="terminal-meta"><span className={`connection ${connection}`}>{connectionLabel}</span>{paused && <button onClick={() => { terminal.current?.scrollToBottom(); setPaused(false); }}><Pause />{tr('Scroll dijeda · lanjutkan', 'Scroll paused · resume')}</button>}</div>
     <div className="xterm-host" ref={host} aria-label={tr('Output console server', 'Server console output')} />
-    <form className="command-prompt" onSubmit={submit}><span>$</span><input name="command" aria-label={tr('Command Minecraft', 'Minecraft command')} autoComplete="off" disabled={!running || connection !== 'connected'} placeholder={running ? 'say Hello from MyPanel' : tr('Server harus berjalan', 'Server must be running')} /><button disabled={!running || connection !== 'connected'} aria-label={tr('Kirim command', 'Send command')}><Send /></button></form>
+    <form className="command-prompt" onSubmit={submit}><span>$</span><input name="command" aria-label={tr('Command Minecraft', 'Minecraft command')} autoComplete="off" disabled={!running || connection !== 'connected'} placeholder={running ? 'say Hello from MyPanel' : starting ? tr('Tunggu sampai server siap', 'Wait until the server is ready') : tr('Server harus berjalan', 'Server must be running')} /><button disabled={!running || connection !== 'connected'} aria-label={tr('Kirim command', 'Send command')}><Send /></button></form>
     <span className="sr-only" aria-live="polite">{result}</span>
   </section>;
+}
+
+type ConsoleTheme = 'dark' | 'light';
+
+export function canSendConsoleCommand(state: Server['state']) { return state === 'running'; }
+
+function currentTheme(): ConsoleTheme { return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'; }
+
+export function consoleTerminalTheme(theme: ConsoleTheme): ITheme {
+  if (theme === 'light') return { background: '#FFFFFF', foreground: '#24292F', cursor: '#1A7F37', selectionBackground: '#B6D7FF', black: '#24292F', red: '#CF222E', green: '#1A7F37', yellow: '#9A6700', blue: '#0969DA', magenta: '#8250DF', cyan: '#1B7C83', white: '#57606A', brightBlack: '#6E7781', brightRed: '#A40E26', brightGreen: '#116329', brightYellow: '#7D4E00', brightBlue: '#0550AE', brightMagenta: '#6639BA', brightCyan: '#0A6C74', brightWhite: '#1F2328' };
+  return { background: '#0D1117', foreground: '#C9D1D9', cursor: '#3FB950', selectionBackground: '#264F36', black: '#484F58', red: '#F85149', green: '#3FB950', yellow: '#D29922', blue: '#58A6FF', magenta: '#BC8CFF', cyan: '#39C5CF', white: '#E6EDF3', brightBlack: '#6E7681', brightRed: '#FF7B72', brightGreen: '#56D364', brightYellow: '#E3B341', brightBlue: '#79C0FF', brightMagenta: '#D2A8FF', brightCyan: '#56D4DD', brightWhite: '#FFFFFF' };
 }
 
 function appendSample(history: number[], value: number) { return [...history.slice(-29), Number.isFinite(value) ? value : 0]; }

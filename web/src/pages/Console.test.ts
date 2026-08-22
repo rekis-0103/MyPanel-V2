@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { renderConsoleText, sanitizeTerminalText } from './Console';
+import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleText, sanitizeTerminalText } from './Console';
+
+describe('canSendConsoleCommand', () => {
+  it('blocks commands until the server is fully running', () => {
+    expect(canSendConsoleCommand('starting')).toBe(false);
+    expect(canSendConsoleCommand('running')).toBe(true);
+    expect(canSendConsoleCommand('offline')).toBe(false);
+  });
+});
+
+describe('consoleTerminalTheme', () => {
+  it('uses a light terminal surface in light mode', () => {
+    const theme = consoleTerminalTheme('light');
+    expect(theme.background).toBe('#FFFFFF');
+    expect(theme.foreground).toBe('#24292F');
+  });
+
+  it('keeps the dark terminal palette in dark mode', () => {
+    const theme = consoleTerminalTheme('dark');
+    expect(theme.background).toBe('#0D1117');
+    expect(theme.foreground).toBe('#C9D1D9');
+  });
+});
 
 describe('sanitizeTerminalText', () => {
   it('removes terminal erase-line sequences without leaving CSI text behind', () => {

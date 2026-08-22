@@ -24,6 +24,9 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 - CPU dan working-memory server dihitung sesuai limit/cgroup, console dikirim
   incremental dengan dukungan warna aman, dan command tidak lagi membuat noise
   koneksi RCON per perintah.
+- Console tidak lagi menampilkan timestamp Docker ganda, level log dan nama
+  plugin diberi warna semantik, dan CPU mengikuti persentase core Docker tanpa
+  normalisasi kedua yang mengecilkan nilainya.
 
 ## [0.1.0] - 2026-08-20
 

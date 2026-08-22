@@ -126,8 +126,11 @@ Dashboard hanya menampilkan total resource yang dialokasikan ke server dan
 menandai telemetri host sebagai belum tersedia, sehingga UI tidak menampilkan
 angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
 kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
-Metric server tetap tersedia: CPU dinormalisasi terhadap alokasi vCPU, RAM
-mengurangi cache cgroup, dan disk menghitung file di direktori data server.
+Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
+vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
+cgroup, dan disk menghitung file di direktori data server. Console menghilangkan
+timestamp Docker tambahan, mempertahankan timestamp Minecraft, serta memberi
+warna berbeda pada level INFO/WARN/ERROR dan nama plugin.
 
 ## Update dari GitHub
 

@@ -60,6 +60,8 @@ menghapus direktori data.
 `log`, `status`, serta `command-result`. Event `log` membawa `reset` untuk
 membedakan snapshot awal dari chunk incremental. Event `status` membawa objek
 `metrics` berisi `state`, `cpuPercent`, `memoryBytes`, `diskBytes`, dan `players`.
+`cpuPercent` memakai semantik Docker: 100 berarti satu vCPU terpakai penuh dan
+nilai maksimum praktis mengikuti jumlah vCPU server dikali 100.
 
 File dibatasi 10 MiB per operasi dan path absolut, traversal, serta symlink yang
 keluar dari root server ditolak agent. Pesan error node sengaja disanitasi pada

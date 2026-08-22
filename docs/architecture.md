@@ -62,9 +62,14 @@
   `/data`; backups live under `/var/lib/mypanel/backups/<uuid>`.
 - Total container memory is the user allocation. JVM maximum heap defaults to
   80% of that allocation to leave native-memory headroom.
-- Server CPU is reported as 0–100% of its configured vCPU allocation. Working
-  RAM subtracts `inactive_file` on cgroup v2 (falling back to `cache`), and disk
-  usage includes regular files only within the managed server root.
+- Server CPU follows Docker's core-relative percentage: 100% represents one
+  fully used vCPU, so a two-vCPU server can reach 200%. Working RAM subtracts
+  `inactive_file` on cgroup v2 (falling back to `cache`), and disk usage includes
+  regular files only within the managed server root.
+- Docker timestamps are disabled at the log source because Minecraft already
+  emits its own timestamp. The browser applies safe semantic ANSI colors to
+  Minecraft levels and plugin tags while preserving validated ANSI/section-code
+  colors from the server.
 - Console commands use the image's named console pipe as UID/GID 1000 instead
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next

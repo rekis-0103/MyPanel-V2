@@ -328,6 +328,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 	environment := []string{
 		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
 		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
+		"TERM=xterm-256color", "COLORTERM=truecolor",
 	}
 	configKeys := map[string]string{
 		"motd": "MOTD", "difficulty": "DIFFICULTY", "gamemode": "MODE",

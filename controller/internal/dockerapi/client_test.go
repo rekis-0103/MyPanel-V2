@@ -28,6 +28,7 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	env := value["Env"].([]string)
 	foundHeap := false
 	foundPipe := false
+	foundTerminal := false
 	for _, item := range env {
 		if item == "MEMORY=1638M" {
 			foundHeap = true
@@ -35,8 +36,11 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 		if item == "CREATE_CONSOLE_IN_PIPE=true" {
 			foundPipe = true
 		}
+		if item == "TERM=xterm-256color" {
+			foundTerminal = true
+		}
 	}
-	if !foundHeap || !foundPipe {
+	if !foundHeap || !foundPipe || !foundTerminal {
 		t.Fatalf("required runtime environment missing: %v", env)
 	}
 	if value["OpenStdin"] != true {

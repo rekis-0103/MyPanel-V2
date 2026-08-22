@@ -157,6 +157,9 @@ services:
     tmpfs:
       - /tmp:size=64m,mode=1777
     cap_drop: ["ALL"]
+    # Minecraft owns its data as UID/GID 1000. The agent needs only this
+    # filesystem capability to manage those files without running workloads.
+    cap_add: ["DAC_OVERRIDE"]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
     logging: *default-logging

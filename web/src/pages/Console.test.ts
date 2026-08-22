@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleText, sanitizeTerminalText } from './Console';
+import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleText, renderLifecycleMessage, sanitizeTerminalText } from './Console';
 
 describe('canSendConsoleCommand', () => {
   it('blocks commands until the server is fully running', () => {
@@ -85,5 +85,17 @@ describe('renderConsoleText', () => {
     expect(rendered).toContain('\x1b[33mGold\x1b[0m');
     expect(rendered).toContain('\x1b[96mAqua');
     expect(rendered).toContain('\x1b[91mRed');
+  });
+});
+
+describe('renderLifecycleMessage', () => {
+  it('renders control-plane lifecycle events in orange', () => {
+    expect(renderLifecycleMessage('Restart successful.'))
+      .toBe('\r\n\x1b[38;5;208m[MyPanel] Restart successful.\x1b[0m\r\n');
+  });
+
+  it('does not allow an event message to override the lifecycle color', () => {
+    expect(renderLifecycleMessage('\x1b[31munsafe color\x1b[0m')).toContain('[MyPanel] unsafe color\x1b[0m');
+    expect(renderLifecycleMessage('\x1b[31munsafe color\x1b[0m')).not.toContain('\x1b[31m');
   });
 });

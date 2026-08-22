@@ -54,6 +54,7 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
         if (message.type === 'log') enqueue({ text: renderConsoleText(String(message.logs ?? '')), reset: message.reset === true, follow: !pausedRef.current });
+        if (message.type === 'lifecycle') enqueue({ text: renderLifecycleMessage(String(message.message ?? '')), reset: false, follow: !pausedRef.current });
         if (message.type === 'status' && message.metrics) {
           const next = message.metrics as Metrics; setMetrics(next); if (typeof message.state === 'string') setRuntimeState(message.state as Server['state']);
           setHistory((current) => ({ cpu: appendSample(current.cpu, next.cpuPercent), memory: appendSample(current.memory, next.memoryBytes), disk: appendSample(current.disk, next.diskBytes) }));
@@ -103,6 +104,11 @@ export function renderConsoleText(logs: string) {
   const lines = logs.split(/\r?\n/); if (lines[lines.length - 1] === '') lines.pop();
   const rendered = lines.filter((line) => !/Thread RCON Client .* (?:started|shutting down)$/i.test(line)).map(renderConsoleLine).join('\r\n');
   return rendered ? rendered + (logs.endsWith('\n') ? '\r\n' : '') : '';
+}
+
+export function renderLifecycleMessage(message: string) {
+  const plain = sanitizeTerminalText(message).replace(/\x1b\[[0-9;]*m/g, '').trim();
+  return plain ? `\r\n\x1b[38;5;208m[MyPanel] ${plain}\x1b[0m\r\n` : '';
 }
 
 function renderConsoleLine(line: string) {

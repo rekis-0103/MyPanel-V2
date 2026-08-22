@@ -70,7 +70,9 @@
   emits its own timestamp. The browser applies safe semantic ANSI colors to
   Minecraft levels and plugin tags while preserving validated ANSI SGR colors
   and translating Minecraft `§`, plugin legacy `&`/`&x`, and supported
-  MiniMessage color/decorations. Non-SGR terminal controls are stripped.
+  MiniMessage color/decorations. Managed JVM defaults request Adventure
+  true-color output while preserving user JVM options; non-SGR terminal
+  controls are stripped.
 - Console commands use the image's named console pipe as UID/GID 1000 instead
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next

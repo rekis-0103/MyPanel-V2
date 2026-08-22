@@ -135,7 +135,8 @@ dinyalakan, status tetap `starting` dan command console terkunci sampai health
 Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
 terang dengan palette ANSI berkontras tinggi. Warna keluaran plugin didukung
 melalui ANSI SGR, kode Minecraft `§`, legacy `&`, RGB `&x&…`, serta tag
-MiniMessage bernama/hex dan dekorasi.
+MiniMessage bernama/hex dan dekorasi. Container baru atau yang diperbarui juga
+meminta logger Adventure menghasilkan ANSI true-color secara eksplisit.
 
 ## Update dari GitHub
 

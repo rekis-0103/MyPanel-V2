@@ -222,15 +222,13 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		disk, _ := directorySize(a.serverPath(id))
-		cpuPercent := state.CPUPercent
 		if spec, metadataErr := a.readMetadata(id); metadataErr == nil {
-			cpuPercent = normalizedCPUPercent(cpuPercent, spec.CPU)
 			if disk > int64(spec.DiskMB)*1024*1024 {
 				_ = a.docker.Stop(ctx, id)
 				state.State = "error"
 			}
 		}
-		write(w, http.StatusOK, map[string]any{"state": state.State, "cpuPercent": cpuPercent,
+		write(w, http.StatusOK, map[string]any{"state": state.State, "cpuPercent": state.CPUPercent,
 			"memoryBytes": state.MemoryBytes, "diskBytes": disk, "players": 0})
 	case "logs":
 		if r.Method != http.MethodGet {
@@ -357,17 +355,6 @@ func (a *agent) checkDiskLimit(id string) error {
 		return errDiskLimit
 	}
 	return nil
-}
-
-func normalizedCPUPercent(hostPercent float64, cpuLimit int) float64 {
-	if cpuLimit <= 0 || hostPercent <= 0 {
-		return 0
-	}
-	percent := hostPercent / float64(cpuLimit)
-	if percent > 100 {
-		return 100
-	}
-	return percent
 }
 
 func (a *agent) serverPath(id string) string {

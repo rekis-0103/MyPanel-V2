@@ -71,7 +71,7 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
   return <section className="surface console-page">
     <header className="console-header"><div><span>{serverAddress(server.bindIp, server.port)}</span><h1>{server.name}</h1></div><StatusBadge status={normalizeStatus(server.state)} /><div className="console-actions">{running ? <><ActionButton size="sm" variant="danger" icon={Square} loading={busy} onClick={() => act(server, 'stop')}>{tr('Stop', 'Stop')}</ActionButton><ActionButton size="sm" variant="secondary" icon={RotateCcw} loading={busy} onClick={() => act(server, 'restart')}>{tr('Restart', 'Restart')}</ActionButton></> : <ActionButton size="sm" icon={Play} loading={busy} onClick={() => act(server, 'start')}>{tr('Mulai', 'Start')}</ActionButton>}</div></header>
     <div className="console-metrics">
-      <MetricChart label="CPU" value={metrics?.cpuPercent ?? 0} max={100} history={history.cpu} detail={`${(metrics?.cpuPercent ?? 0).toFixed(1)}% / ${server.cpu} vCPU`} />
+      <MetricChart label="CPU" value={metrics?.cpuPercent ?? 0} max={server.cpu * 100} history={history.cpu} detail={`${((metrics?.cpuPercent ?? 0) / 100).toFixed(2)} / ${server.cpu} vCPU`} />
       <MetricChart label="RAM" value={metrics?.memoryBytes ?? 0} max={server.memoryMb * 1024 * 1024} history={history.memory} detail={`${formatBytes(metrics?.memoryBytes ?? 0)} / ${formatBytes(server.memoryMb * 1024 * 1024)}`} formatValue={formatBytes} />
       <MetricChart label="Disk" value={metrics?.diskBytes ?? 0} max={server.diskMb * 1024 * 1024} history={history.disk} detail={`${formatBytes(metrics?.diskBytes ?? 0)} / ${formatBytes(server.diskMb * 1024 * 1024)}`} formatValue={formatBytes} />
     </div>
@@ -86,8 +86,27 @@ function appendSample(history: number[], value: number) { return [...history.sli
 
 export function renderConsoleText(logs: string) {
   const lines = logs.split(/\r?\n/); if (lines[lines.length - 1] === '') lines.pop();
-  const rendered = lines.filter((line) => !/Thread RCON Client .* (?:started|shutting down)$/i.test(line)).map((line) => `${sanitizeTerminalText(line)}\x1b[0m`).join('\r\n');
+  const rendered = lines.filter((line) => !/Thread RCON Client .* (?:started|shutting down)$/i.test(line)).map(renderConsoleLine).join('\r\n');
   return rendered ? rendered + (logs.endsWith('\n') ? '\r\n' : '') : '';
+}
+
+function renderConsoleLine(line: string) {
+  const clean = sanitizeTerminalText(line).replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+/, '');
+  const minecraft = clean.match(/^\[([0-9]{2}:[0-9]{2}:[0-9]{2}) ([A-Z]+)\]:\s?(.*)$/);
+  if (minecraft) {
+    const [, time, level, message] = minecraft;
+    const levelColor = /ERROR|FATAL|SEVERE/.test(level) ? '91' : /WARN/.test(level) ? '93' : /DEBUG|TRACE/.test(level) ? '90' : '96';
+    const messageColor = /ERROR|FATAL|SEVERE/.test(level) ? '91' : /WARN/.test(level) ? '93' : '37';
+    return `\x1b[90m[${time} \x1b[${levelColor}m${level}\x1b[90m]: \x1b[${messageColor}m${colorPluginTags(message)}\x1b[0m`;
+  }
+  if (/^\[(?:init|mc-image-helper)\]/i.test(clean)) return `\x1b[36m${clean}\x1b[0m`;
+  if (/\b(?:ERROR|FATAL|SEVERE|Exception)\b/i.test(clean)) return `\x1b[91m${clean}\x1b[0m`;
+  if (/\bWARN(?:ING)?\b/i.test(clean)) return `\x1b[93m${clean}\x1b[0m`;
+  return `${clean}\x1b[0m`;
+}
+
+function colorPluginTags(message: string) {
+  return message.replace(/^(\[[^\]]+\])/, '\x1b[95m$1\x1b[37m');
 }
 
 const minecraftColors: Record<string, string> = {

@@ -95,6 +95,24 @@ func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	}
 }
 
+func TestLogsDoesNotAddDockerTimestamps(t *testing.T) {
+	var path string
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		path = request.URL.RequestURI()
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("[06:59:03 INFO]: Done\n")), Header: make(http.Header)}, nil
+	})}}
+	logs, err := client.Logs(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(path, "timestamps=0") {
+		t.Fatalf("logs request path = %q", path)
+	}
+	if logs != "[06:59:03 INFO]: Done\n" {
+		t.Fatalf("logs = %q", logs)
+	}
+}
+
 func TestContainerSpecUsesSelectedJavaImage(t *testing.T) {
 	spec := Spec{ID: "2d86389b-f055-4b80-9d8b-daeb83f5fa15", Runtime: "paper", Version: "1.21.11", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, BindIP: "0.0.0.0", Port: 25565, DataPath: "/data", Config: map[string]any{}}
 	value := ContainerSpec(spec.Image, spec)

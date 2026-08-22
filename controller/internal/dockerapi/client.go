@@ -231,7 +231,7 @@ func calculateStats(response dockerStats) State {
 }
 
 func (c *Client) Logs(ctx context.Context, id string) (string, error) {
-	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?stdout=1&stderr=1&tail=400&timestamps=1", nil)
+	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?stdout=1&stderr=1&tail=400&timestamps=0", nil)
 	if err != nil {
 		return "", err
 	}

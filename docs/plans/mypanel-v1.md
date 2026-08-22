@@ -46,7 +46,7 @@ verified SSH-key session is open, so implementation cannot lock the owner out.
 - `go test ./...` and `go vet ./...` passed locally.
 - `go test -race ./...` passed in the Linux Go 1.26 container.
 - `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm test`, and `pnpm build`
-  passed; eight test files contain 23 passing frontend tests.
+  passed; eight test files contain 26 passing frontend tests.
 - PostgreSQL 17 applied migrations 001 and 002 to version 2.
 - A temporary full Compose stack passed readiness, owner login/session/CSRF
   logout, mTLS agent connectivity, internal-network, and Docker-socket boundary

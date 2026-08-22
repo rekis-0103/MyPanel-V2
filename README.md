@@ -130,7 +130,10 @@ Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
 vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
 cgroup, dan disk menghitung file di direktori data server. Console menghilangkan
 timestamp Docker tambahan, mempertahankan timestamp Minecraft, serta memberi
-warna berbeda pada level INFO/WARN/ERROR dan nama plugin.
+warna berbeda pada level INFO/WARN/ERROR dan nama plugin. Setelah container
+dinyalakan, status tetap `starting` dan command console terkunci sampai health
+Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
+terang dengan palette ANSI berkontras tinggi.
 
 ## Update dari GitHub
 

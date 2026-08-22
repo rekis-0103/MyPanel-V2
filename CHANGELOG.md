@@ -27,6 +27,8 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 - Console tidak lagi menampilkan timestamp Docker ganda, level log dan nama
   plugin diberi warna semantik, dan CPU mengikuti persentase core Docker tanpa
   normalisasi kedua yang mengecilkan nilainya.
+- Status server tetap memulai sampai health Minecraft siap, command diblokir
+  selama startup, dan terminal mengikuti background serta palette light mode.
 
 ## [0.1.0] - 2026-08-20
 

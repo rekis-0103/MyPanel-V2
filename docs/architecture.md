@@ -74,6 +74,10 @@
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next
   applied.
+- A running Docker process remains `starting` while its Minecraft healthcheck is
+  not healthy. Lifecycle jobs preserve that transition, and both the browser and
+  WebSocket command boundary reject commands until the observed state is
+  `running`.
 - Startup settings persist validated `jvmOpts` and `extraArgs` in the existing
   JSON config. The agent maps them only to the image-supported `JVM_OPTS` and
   `EXTRA_ARGS` variables; arbitrary shell commands and images remain disallowed.

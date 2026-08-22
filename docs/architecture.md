@@ -76,6 +76,10 @@
   MiniMessage color/decorations. Managed JVM defaults request Adventure
   true-color output while preserving user JVM options and advertise an
   `xterm-256color`/true-color terminal; non-SGR terminal controls are stripped.
+- The web Content Security Policy keeps scripts restricted to same-origin
+  files. Inline style elements are allowed because xterm.js generates a scoped
+  runtime stylesheet for its ANSI palette; inline script execution remains
+  disallowed.
 - Console commands use the image's named console pipe as UID/GID 1000 instead
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next

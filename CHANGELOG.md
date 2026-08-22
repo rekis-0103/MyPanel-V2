@@ -32,6 +32,8 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 - Console menerjemahkan warna plugin dari ANSI, kode Minecraft/legacy, RGB,
   serta tag MiniMessage, dan meminta output Adventure true-color tanpa
   mengizinkan kontrol terminal non-warna.
+- File yang diunggah panel memakai group Minecraft (`GID 1000`), sehingga JAR
+  plugin dapat dibaca dan ditemukan Paper saat server dimulai.
 
 ## [0.1.0] - 2026-08-20
 

@@ -60,6 +60,9 @@
 
 - Server data lives at `/var/lib/mypanel/servers/<uuid>` and is mounted at
   `/data`; backups live under `/var/lib/mypanel/backups/<uuid>`.
+- The root agent runs with primary GID `1000`, matching the Minecraft runtime,
+  so uploaded files and newly created directories remain readable by the
+  server while retaining restrictive group-based modes.
 - Total container memory is the user allocation. JVM maximum heap defaults to
   80% of that allocation to leave native-memory headroom.
 - Server CPU follows Docker's core-relative percentage: 100% represents one

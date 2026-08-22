@@ -69,6 +69,17 @@ func TestConsoleDeltaAppendsNewLinesWithoutRedrawing(t *testing.T) {
 	}
 }
 
+func TestInitialConsoleEventQueryUsesContiguousParameters(t *testing.T) {
+	query, arguments := consoleEventQuery("server-id", 0, 100)
+	if len(arguments) != 2 || !strings.Contains(query, "LIMIT $2") || strings.Contains(query, "$3") {
+		t.Fatalf("initial console event query = %q args=%v", query, arguments)
+	}
+	query, arguments = consoleEventQuery("server-id", 41, 100)
+	if len(arguments) != 3 || !strings.Contains(query, "id>$2") || !strings.Contains(query, "LIMIT $3") {
+		t.Fatalf("incremental console event query = %q args=%v", query, arguments)
+	}
+}
+
 func TestLifecycleCompletionWaitsForReadiness(t *testing.T) {
 	if got := lifecycleCompletionState("start"); got != "running" {
 		t.Fatalf("start completion state = %q", got)

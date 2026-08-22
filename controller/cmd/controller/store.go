@@ -347,15 +347,8 @@ func (s *store) consoleEvents(ctx context.Context, serverID string, afterID int6
 	if limit < 1 || limit > 200 {
 		limit = 100
 	}
-	query := `SELECT id,message,created_at FROM server_console_events
-WHERE server_id=$1 AND id>$2 ORDER BY id LIMIT $3`
-	if afterID == 0 {
-		query = `SELECT id,message,created_at FROM (
-  SELECT id,message,created_at FROM server_console_events
-  WHERE server_id=$1 ORDER BY id DESC LIMIT $3
-) recent ORDER BY id`
-	}
-	rows, err := s.db.Query(ctx, query, serverID, afterID, limit)
+	query, arguments := consoleEventQuery(serverID, afterID, limit)
+	rows, err := s.db.Query(ctx, query, arguments...)
 	if err != nil {
 		return nil, err
 	}
@@ -369,6 +362,20 @@ WHERE server_id=$1 AND id>$2 ORDER BY id LIMIT $3`
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func consoleEventQuery(serverID string, afterID int64, limit int) (string, []any) {
+	query := `SELECT id,message,created_at FROM server_console_events
+WHERE server_id=$1 AND id>$2 ORDER BY id LIMIT $3`
+	arguments := []any{serverID, afterID, limit}
+	if afterID == 0 {
+		query = `SELECT id,message,created_at FROM (
+  SELECT id,message,created_at FROM server_console_events
+  WHERE server_id=$1 ORDER BY id DESC LIMIT $2
+) recent ORDER BY id`
+		arguments = []any{serverID, limit}
+	}
+	return query, arguments
 }
 
 func (s *store) userCount(ctx context.Context) (int, error) {

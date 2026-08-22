@@ -1,6 +1,7 @@
 package dockerapi
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -26,13 +27,71 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	}
 	env := value["Env"].([]string)
 	foundHeap := false
+	foundPipe := false
 	for _, item := range env {
 		if item == "MEMORY=1638M" {
 			foundHeap = true
 		}
+		if item == "CREATE_CONSOLE_IN_PIPE=true" {
+			foundPipe = true
+		}
 	}
-	if !foundHeap {
-		t.Fatalf("heap headroom missing: %v", env)
+	if !foundHeap || !foundPipe {
+		t.Fatalf("required runtime environment missing: %v", env)
+	}
+	if value["OpenStdin"] != true {
+		t.Fatal("interactive console input was not enabled")
+	}
+}
+
+func TestContainerSpecAppliesValidatedStartupOptions(t *testing.T) {
+	spec := Spec{ID: "id", Runtime: "paper", Version: "1.21.11", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, DataPath: "/data", Config: map[string]any{"jvmOpts": "-XX:+UseG1GC", "extraArgs": "nogui"}}
+	env := ContainerSpec(spec.Image, spec)["Env"].([]string)
+	joined := strings.Join(env, "\n")
+	for _, expected := range []string{"JVM_OPTS=-XX:+UseG1GC", "EXTRA_ARGS=nogui", "ENABLE_RCON=false"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("%s missing from %v", expected, env)
+		}
+	}
+}
+
+func TestCalculateStatsUsesCgroupV2InactiveFileAndHostCPU(t *testing.T) {
+	var stats dockerStats
+	stats.MemoryStats.Usage = 800
+	stats.MemoryStats.Stats = map[string]uint64{"inactive_file": 300, "cache": 100}
+	stats.CPUStats.CPUUsage.TotalUsage = 300
+	stats.PreCPUStats.CPUUsage.TotalUsage = 100
+	stats.CPUStats.SystemCPUUsage = 1100
+	stats.PreCPUStats.SystemCPUUsage = 100
+	stats.CPUStats.OnlineCPUs = 8
+	result := calculateStats(stats)
+	if result.MemoryBytes != 500 {
+		t.Fatalf("memory = %d, want 500", result.MemoryBytes)
+	}
+	if result.CPUPercent != 160 {
+		t.Fatalf("host CPU percent = %v, want 160", result.CPUPercent)
+	}
+}
+
+func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
+	var create map[string]any
+	requests := 0
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if requests == 1 {
+			if err := json.NewDecoder(request.Body).Decode(&create); err != nil {
+				t.Fatal(err)
+			}
+			return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(`{"Id":"exec-id"}`)), Header: make(http.Header)}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("")), Header: make(http.Header)}, nil
+	})}}
+	if _, err := client.Command(t.Context(), "server-id", "say hello"); err != nil {
+		t.Fatal(err)
+	}
+	command := create["Cmd"].([]any)
+	if command[0] != "mc-send-to-console" || command[1] != "say hello" || create["User"] != "1000:1000" {
+		t.Fatalf("exec configuration = %#v", create)
 	}
 }
 

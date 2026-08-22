@@ -56,11 +56,31 @@ func TestFileWriteStaysWithinServerRoot(t *testing.T) {
 }
 
 func TestValidateAgentConfig(t *testing.T) {
-	if err := validateAgentConfig(map[string]any{"maxPlayers": float64(20), "onlineMode": true}); err != nil {
+	if err := validateAgentConfig(map[string]any{"maxPlayers": float64(20), "onlineMode": true, "jvmOpts": "-XX:+UseG1GC", "extraArgs": "nogui"}); err != nil {
 		t.Fatalf("valid configuration rejected: %v", err)
 	}
 	if err := validateAgentConfig(map[string]any{"unsupported": "value"}); err == nil {
 		t.Fatal("unsupported configuration was accepted")
+	}
+}
+
+func TestStartupOptionsRejectShellControlCharacters(t *testing.T) {
+	for _, value := range []string{"$(touch /tmp/x)", "nogui; stop", "@args.txt", "line\nbreak"} {
+		if validStartupOption(value) {
+			t.Fatalf("unsafe startup option %q was accepted", value)
+		}
+	}
+}
+
+func TestNormalizedCPUPercentUsesServerLimit(t *testing.T) {
+	for _, test := range []struct {
+		host  float64
+		limit int
+		want  float64
+	}{{160, 2, 80}, {250, 2, 100}, {20, 0, 0}, {-1, 2, 0}} {
+		if got := normalizedCPUPercent(test.host, test.limit); got != test.want {
+			t.Fatalf("normalizedCPUPercent(%v, %d) = %v, want %v", test.host, test.limit, got, test.want)
+		}
 	}
 }
 

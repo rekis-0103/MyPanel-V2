@@ -38,6 +38,26 @@ type State struct {
 	MemoryBytes int64   `json:"memoryBytes"`
 }
 
+type dockerStats struct {
+	MemoryStats struct {
+		Usage uint64            `json:"usage"`
+		Stats map[string]uint64 `json:"stats"`
+	} `json:"memory_stats"`
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+		OnlineCPUs     uint32 `json:"online_cpus"`
+	} `json:"cpu_stats"`
+	PreCPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+	} `json:"precpu_stats"`
+}
+
 func New(socket string) *Client {
 	if socket == "" {
 		socket = "/var/run/docker.sock"
@@ -176,33 +196,21 @@ func (c *Client) stats(ctx context.Context, id string) (State, error) {
 	if status != http.StatusOK {
 		return State{}, dockerError("read Minecraft stats", status, body)
 	}
-	var response struct {
-		MemoryStats struct {
-			Usage uint64 `json:"usage"`
-			Stats struct {
-				Cache uint64 `json:"cache"`
-			} `json:"stats"`
-		} `json:"memory_stats"`
-		CPUStats struct {
-			CPUUsage struct {
-				TotalUsage uint64 `json:"total_usage"`
-			} `json:"cpu_usage"`
-			SystemCPUUsage uint64 `json:"system_cpu_usage"`
-			OnlineCPUs     uint32 `json:"online_cpus"`
-		} `json:"cpu_stats"`
-		PreCPUStats struct {
-			CPUUsage struct {
-				TotalUsage uint64 `json:"total_usage"`
-			} `json:"cpu_usage"`
-			SystemCPUUsage uint64 `json:"system_cpu_usage"`
-		} `json:"precpu_stats"`
-	}
+	var response dockerStats
 	if err := json.Unmarshal(body, &response); err != nil {
 		return State{}, err
 	}
+	return calculateStats(response), nil
+}
+
+func calculateStats(response dockerStats) State {
 	memory := response.MemoryStats.Usage
-	if memory > response.MemoryStats.Stats.Cache {
-		memory -= response.MemoryStats.Stats.Cache
+	cache := response.MemoryStats.Stats["inactive_file"]
+	if cache == 0 {
+		cache = response.MemoryStats.Stats["cache"]
+	}
+	if memory > cache {
+		memory -= cache
 	}
 	var percent float64
 	var cpuDelta, systemDelta uint64
@@ -219,7 +227,7 @@ func (c *Client) stats(ctx context.Context, id string) (State, error) {
 		}
 		percent = float64(cpuDelta) / float64(systemDelta) * float64(cpus) * 100
 	}
-	return State{CPUPercent: percent, MemoryBytes: int64(memory)}, nil
+	return State{CPUPercent: percent, MemoryBytes: int64(memory)}
 }
 
 func (c *Client) Logs(ctx context.Context, id string) (string, error) {
@@ -237,7 +245,7 @@ func (c *Client) Logs(ctx context.Context, id string) (string, error) {
 }
 
 func (c *Client) Command(ctx context.Context, id, command string) (string, error) {
-	createBody, _ := json.Marshal(map[string]any{"AttachStdout": true, "AttachStderr": true, "Tty": true, "Cmd": []string{"rcon-cli", command}})
+	createBody, _ := json.Marshal(map[string]any{"AttachStdout": true, "AttachStderr": true, "Tty": true, "User": "1000:1000", "Cmd": []string{"mc-send-to-console", command}})
 	status, body, err := c.request(ctx, http.MethodPost, "/containers/"+Name(id)+"/exec", createBody)
 	if err != nil {
 		return "", err
@@ -303,7 +311,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 	heapMB := max(768, spec.MemoryMB*80/100)
 	environment := []string{
 		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
-		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=true",
+		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
 	}
 	configKeys := map[string]string{
 		"motd": "MOTD", "difficulty": "DIFFICULTY", "gamemode": "MODE",
@@ -316,9 +324,17 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 			environment = append(environment, envName+"="+fmt.Sprint(value))
 		}
 	}
+	if value, ok := spec.Config["jvmOpts"]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
+		environment = append(environment, "JVM_OPTS="+strings.TrimSpace(fmt.Sprint(value)))
+	}
+	if value, ok := spec.Config["extraArgs"]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
+		environment = append(environment, "EXTRA_ARGS="+strings.TrimSpace(fmt.Sprint(value)))
+	}
 	return map[string]any{
 		"Image":        image,
 		"Tty":          true,
+		"OpenStdin":    true,
+		"StdinOnce":    false,
 		"Env":          environment,
 		"ExposedPorts": map[string]any{"25565/tcp": map[string]any{}},
 		"Labels":       map[string]string{"mypanel.managed": "true", "mypanel.server-id": spec.ID},

@@ -295,10 +295,11 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 			}
 		}
 	}()
-	ticker := time.NewTicker(1500 * time.Millisecond)
-	defer ticker.Stop()
+	logUpdates := make(chan consoleLogUpdate, 8)
+	statusUpdates := make(chan agentState, 1)
+	go a.pollConsoleLogs(ctx, serverID, logUpdates)
+	go a.pollConsoleState(ctx, serverID, statusUpdates)
 	session, _ := currentSession(r.Context())
-	lastLogs := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -320,22 +321,96 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 			if connection.Write(ctx, websocket.MessageText, mustJSON(result)) != nil {
 				return
 			}
-		case <-ticker.C:
-			logs, err := a.agent.logs(ctx, serverID)
-			if err == nil && logs != lastLogs {
-				lastLogs = logs
-				if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "log", "logs": logs})) != nil {
-					return
-				}
+		case update := <-logUpdates:
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "log", "logs": update.Logs, "reset": update.Reset})) != nil {
+				return
 			}
-			state, err := a.agent.state(ctx, serverID)
-			if err == nil {
-				if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state})) != nil {
+		case state := <-statusUpdates:
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State, "metrics": state})) != nil {
+				return
+			}
+		}
+	}
+}
+
+type consoleLogUpdate struct {
+	Logs  string
+	Reset bool
+}
+
+func (a *app) pollConsoleLogs(ctx context.Context, serverID string, updates chan<- consoleLogUpdate) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	previous := ""
+	for {
+		logs, err := a.agent.logs(ctx, serverID)
+		if err == nil && logs != previous {
+			delta, reset := consoleDelta(previous, logs)
+			previous = logs
+			if delta != "" {
+				select {
+				case updates <- consoleLogUpdate{Logs: delta, Reset: reset}:
+				case <-ctx.Done():
 					return
 				}
 			}
 		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
+}
+
+func (a *app) pollConsoleState(ctx context.Context, serverID string, updates chan<- agentState) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		state, err := a.agent.state(ctx, serverID)
+		if err == nil {
+			select {
+			case updates <- state:
+			case <-ctx.Done():
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func consoleDelta(previous, current string) (string, bool) {
+	if previous == "" {
+		return current, true
+	}
+	if strings.HasPrefix(current, previous) {
+		return current[len(previous):], false
+	}
+	previousLines := strings.SplitAfter(previous, "\n")
+	currentLines := strings.SplitAfter(current, "\n")
+	if previousLines[len(previousLines)-1] == "" {
+		previousLines = previousLines[:len(previousLines)-1]
+	}
+	if currentLines[len(currentLines)-1] == "" {
+		currentLines = currentLines[:len(currentLines)-1]
+	}
+	for overlap := min(len(previousLines), len(currentLines)); overlap > 0; overlap-- {
+		matched := true
+		for index := 0; index < overlap; index++ {
+			if previousLines[len(previousLines)-overlap+index] != currentLines[index] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return strings.Join(currentLines[overlap:], ""), false
+		}
+	}
+	return current, true
 }
 
 func (a *app) executeFeatureJob(ctx context.Context, item job, serverItem server, result *any) error {

@@ -284,11 +284,22 @@ func validateServerConfig(input map[string]any) error {
 			if !ok || len(text) > 1024 || strings.ContainsAny(text, "\r\n\x00") {
 				return errors.New("whiteListPlayers is invalid")
 			}
+		case "jvmOpts", "extraArgs":
+			text, ok := value.(string)
+			if !ok || !validStartupOption(text) {
+				return errors.New(key + " contains unsupported startup characters")
+			}
 		default:
 			return errors.New("unsupported configuration entry: " + key)
 		}
 	}
 	return nil
+}
+
+var startupOptionPattern = regexp.MustCompile(`^[0-9A-Za-z._:/=,+%\- ]*$`)
+
+func validStartupOption(value string) bool {
+	return len(value) <= 512 && startupOptionPattern.MatchString(value)
 }
 
 func jsonIntegerInRange(value any, minimum, maximum int) bool {

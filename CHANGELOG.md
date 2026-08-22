@@ -24,6 +24,16 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 - CPU dan working-memory server dihitung sesuai limit/cgroup, console dikirim
   incremental dengan dukungan warna aman, dan command tidak lagi membuat noise
   koneksi RCON per perintah.
+- Console tidak lagi menampilkan timestamp Docker ganda, level log dan nama
+  plugin diberi warna semantik, dan CPU mengikuti persentase core Docker tanpa
+  normalisasi kedua yang mengecilkan nilainya.
+- Status server tetap memulai sampai health Minecraft siap, command diblokir
+  selama startup, dan terminal mengikuti background serta palette light mode.
+- Console menerjemahkan warna plugin dari ANSI, kode Minecraft/legacy, RGB,
+  serta tag MiniMessage, dan meminta output Adventure true-color tanpa
+  mengizinkan kontrol terminal non-warna.
+- File yang diunggah panel memakai group Minecraft (`GID 1000`), sehingga JAR
+  plugin dapat dibaca dan ditemukan Paper saat server dimulai.
 
 ## [0.1.0] - 2026-08-20
 

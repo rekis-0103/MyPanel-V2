@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestValidateServerConfig(t *testing.T) {
 	valid := map[string]any{
@@ -62,5 +66,62 @@ func TestConsoleDeltaAppendsNewLinesWithoutRedrawing(t *testing.T) {
 				t.Fatalf("consoleDelta() = (%q, %v), want (%q, %v)", got, gotReset, test.want, test.reset)
 			}
 		})
+	}
+}
+
+func TestInitialConsoleEventQueryUsesContiguousParameters(t *testing.T) {
+	query, arguments := consoleEventQuery("server-id", 0, consoleEventRetention)
+	if len(arguments) != 2 || !strings.Contains(query, "LIMIT $2") || strings.Contains(query, "$3") {
+		t.Fatalf("initial console event query = %q args=%v", query, arguments)
+	}
+	if arguments[1] != consoleEventRetention {
+		t.Fatalf("initial console event limit = %v, want %d", arguments[1], consoleEventRetention)
+	}
+	query, arguments = consoleEventQuery("server-id", 41, consoleEventRetention)
+	if len(arguments) != 3 || !strings.Contains(query, "id>$2") || !strings.Contains(query, "LIMIT $3") {
+		t.Fatalf("incremental console event query = %q args=%v", query, arguments)
+	}
+}
+
+func TestLifecycleCompletionWaitsForReadiness(t *testing.T) {
+	if got := lifecycleCompletionState("start"); got != "running" {
+		t.Fatalf("start completion state = %q", got)
+	}
+	if got := lifecycleCompletionState("restart"); got != "running" {
+		t.Fatalf("restart completion state = %q", got)
+	}
+	if got := lifecycleCompletionState("stop"); got != "offline" {
+		t.Fatalf("stop completion state = %q", got)
+	}
+}
+
+func TestLifecycleMessagesAreActionableWithoutLeakingInternalErrors(t *testing.T) {
+	if got := lifecycleActionMessage("start"); got != "Starting server..." {
+		t.Fatalf("start message = %q", got)
+	}
+	if got := lifecycleActionMessage("restart"); got != "Restarting server..." {
+		t.Fatalf("restart message = %q", got)
+	}
+	message := lifecycleFailureMessage("start", errors.New("open /private/docker.sock: permission denied"))
+	if strings.Contains(message, "/private/docker.sock") || !strings.Contains(message, "node could not complete") {
+		t.Fatalf("unsafe lifecycle message = %q", message)
+	}
+	if got := lifecycleFailureMessage("runtime", errors.New("process exited with code 137")); !strings.Contains(got, "process exited with code 137") {
+		t.Fatalf("exit reason missing from %q", got)
+	}
+	message = lifecycleFailureMessage("runtime", errors.New("process exited with code 137 at /private/runtime/path"))
+	if strings.Contains(message, "/private/runtime/path") {
+		t.Fatalf("exit reason leaked internal path: %q", message)
+	}
+}
+
+func TestConsoleCommandRequiresRunningState(t *testing.T) {
+	for _, state := range []string{"", "offline", "starting", "stopping", "error"} {
+		if consoleCommandReady(state) {
+			t.Fatalf("command allowed while state is %q", state)
+		}
+	}
+	if !consoleCommandReady("running") {
+		t.Fatal("command rejected while server is running")
 	}
 }

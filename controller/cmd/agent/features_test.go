@@ -72,18 +72,6 @@ func TestStartupOptionsRejectShellControlCharacters(t *testing.T) {
 	}
 }
 
-func TestNormalizedCPUPercentUsesServerLimit(t *testing.T) {
-	for _, test := range []struct {
-		host  float64
-		limit int
-		want  float64
-	}{{160, 2, 80}, {250, 2, 100}, {20, 0, 0}, {-1, 2, 0}} {
-		if got := normalizedCPUPercent(test.host, test.limit); got != test.want {
-			t.Fatalf("normalizedCPUPercent(%v, %d) = %v, want %v", test.host, test.limit, got, test.want)
-		}
-	}
-}
-
 func TestValidateSpecRejectsUnsupportedJava(t *testing.T) {
 	valid := serverSpec{ID: testServerID, Runtime: "paper", Version: "1.21.11", JavaVersion: 25, MemoryMB: 2048, CPU: 2, DiskMB: 10240, BindIP: "0.0.0.0", Port: 25565, Config: map[string]any{}}
 	if err := validateSpec(testServerID, valid); err != nil {

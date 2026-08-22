@@ -34,6 +34,7 @@ type Spec struct {
 
 type State struct {
 	State       string  `json:"state"`
+	Reason      string  `json:"reason,omitempty"`
 	CPUPercent  float64 `json:"cpuPercent"`
 	MemoryBytes int64   `json:"memoryBytes"`
 }
@@ -162,22 +163,25 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 	}
 	var response struct {
 		State struct {
-			Running bool   `json:"Running"`
-			Status  string `json:"Status"`
+			Running   bool   `json:"Running"`
+			Status    string `json:"Status"`
+			Error     string `json:"Error"`
+			ExitCode  int    `json:"ExitCode"`
+			OOMKilled bool   `json:"OOMKilled"`
+			Health    *struct {
+				Status string `json:"Status"`
+			} `json:"Health"`
 		} `json:"State"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return State{}, err
 	}
-	state := "offline"
-	if response.State.Running {
-		state = "running"
-	} else if response.State.Status == "restarting" {
-		state = "starting"
-	} else if response.State.Status == "dead" {
-		state = "error"
+	health := ""
+	if response.State.Health != nil {
+		health = response.State.Health.Status
 	}
-	out := State{State: state}
+	state := observedContainerState(response.State.Running, response.State.Status, health)
+	out := State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}
 	if response.State.Running {
 		metrics, err := c.stats(ctx, id)
 		if err == nil {
@@ -188,8 +192,40 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 	return out, nil
 }
 
+func containerFailureReason(running bool, status string, oomKilled bool, exitCode int, runtimeError string) string {
+	if running || status == "created" || status == "restarting" {
+		return ""
+	}
+	if oomKilled {
+		return "process exceeded the server memory limit"
+	}
+	if exitCode != 0 {
+		return fmt.Sprintf("process exited with code %d", exitCode)
+	}
+	if status == "dead" || strings.TrimSpace(runtimeError) != "" {
+		return "container runtime reported a failure"
+	}
+	return ""
+}
+
+func observedContainerState(running bool, status, health string) string {
+	if running {
+		if health != "" && health != "healthy" {
+			return "starting"
+		}
+		return "running"
+	}
+	if status == "restarting" {
+		return "starting"
+	}
+	if status == "dead" {
+		return "error"
+	}
+	return "offline"
+}
+
 func (c *Client) stats(ctx context.Context, id string) (State, error) {
-	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/stats?stream=false&one-shot=true", nil)
+	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/stats?stream=false", nil)
 	if err != nil {
 		return State{}, err
 	}
@@ -231,7 +267,7 @@ func calculateStats(response dockerStats) State {
 }
 
 func (c *Client) Logs(ctx context.Context, id string) (string, error) {
-	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?stdout=1&stderr=1&tail=400&timestamps=1", nil)
+	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?stdout=1&stderr=1&tail=400&timestamps=0", nil)
 	if err != nil {
 		return "", err
 	}
@@ -312,6 +348,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 	environment := []string{
 		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
 		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
+		"TERM=xterm-256color", "COLORTERM=truecolor",
 	}
 	configKeys := map[string]string{
 		"motd": "MOTD", "difficulty": "DIFFICULTY", "gamemode": "MODE",
@@ -324,9 +361,11 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 			environment = append(environment, envName+"="+fmt.Sprint(value))
 		}
 	}
+	jvmOpts := "-Dterminal.ansi=true -Dnet.kyori.ansi.colorLevel=truecolor"
 	if value, ok := spec.Config["jvmOpts"]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
-		environment = append(environment, "JVM_OPTS="+strings.TrimSpace(fmt.Sprint(value)))
+		jvmOpts += " " + strings.TrimSpace(fmt.Sprint(value))
 	}
+	environment = append(environment, "JVM_OPTS="+jvmOpts)
 	if value, ok := spec.Config["extraArgs"]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
 		environment = append(environment, "EXTRA_ARGS="+strings.TrimSpace(fmt.Sprint(value)))
 	}

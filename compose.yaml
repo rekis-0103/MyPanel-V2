@@ -143,7 +143,9 @@ services:
       MINECRAFT_IMAGE_JAVA_21: ${MINECRAFT_IMAGE_JAVA_21:-}
       MINECRAFT_IMAGE_JAVA_25: ${MINECRAFT_IMAGE_JAVA_25:-itzg/minecraft-server:java25}
       DOCKER_SOCKET: /var/run/docker.sock
-    user: "0:0"
+    # Keep root UID for Docker/socket access, but create managed server files
+    # with the same primary GID used by the Minecraft runtime.
+    user: "0:1000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/mypanel:/var/lib/mypanel

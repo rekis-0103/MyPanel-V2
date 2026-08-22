@@ -107,10 +107,17 @@ type agentServerSpec struct {
 
 type agentState struct {
 	State       string  `json:"state"`
+	Reason      string  `json:"reason,omitempty"`
 	CPUPercent  float64 `json:"cpuPercent"`
 	MemoryBytes int64   `json:"memoryBytes"`
 	DiskBytes   int64   `json:"diskBytes"`
 	Players     int     `json:"players"`
+}
+
+type consoleEvent struct {
+	ID        int64     `json:"id"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type apiError struct {

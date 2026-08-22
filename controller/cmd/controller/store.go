@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,8 @@ import (
 )
 
 type store struct{ db *pgxpool.Pool }
+
+const consoleEventRetention = 200
 
 func openStore(ctx context.Context, databaseURL string) (*store, error) {
 	db, err := pgxpool.New(ctx, databaseURL)
@@ -315,6 +318,66 @@ func (s *store) finishJob(ctx context.Context, id string, result any, jobErr err
 	_, err = s.db.Exec(ctx, `UPDATE jobs SET status=$2,result=$3,error=$4,completed_at=now(),updated_at=now()
 WHERE id=$1`, id, status, data, message)
 	return err
+}
+
+func (s *store) addConsoleEvent(ctx context.Context, serverID, message string) error {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return nil
+	}
+	characters := []rune(message)
+	if len(characters) > 500 {
+		message = string(characters[:500])
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `INSERT INTO server_console_events (server_id,message) VALUES ($1,$2)`, serverID, message); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM server_console_events WHERE server_id=$1 AND id NOT IN (
+  SELECT id FROM server_console_events WHERE server_id=$1 ORDER BY id DESC LIMIT $2
+)`, serverID, consoleEventRetention); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *store) consoleEvents(ctx context.Context, serverID string, afterID int64, limit int) ([]consoleEvent, error) {
+	if limit < 1 || limit > 200 {
+		limit = 100
+	}
+	query, arguments := consoleEventQuery(serverID, afterID, limit)
+	rows, err := s.db.Query(ctx, query, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]consoleEvent, 0)
+	for rows.Next() {
+		var item consoleEvent
+		if err := rows.Scan(&item.ID, &item.Message, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func consoleEventQuery(serverID string, afterID int64, limit int) (string, []any) {
+	query := `SELECT id,message,created_at FROM server_console_events
+WHERE server_id=$1 AND id>$2 ORDER BY id LIMIT $3`
+	arguments := []any{serverID, afterID, limit}
+	if afterID == 0 {
+		query = `SELECT id,message,created_at FROM (
+  SELECT id,message,created_at FROM server_console_events
+  WHERE server_id=$1 ORDER BY id DESC LIMIT $2
+) recent ORDER BY id`
+		arguments = []any{serverID, limit}
+	}
+	return query, arguments
 }
 
 func (s *store) userCount(ctx context.Context) (int, error) {

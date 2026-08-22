@@ -9,6 +9,7 @@
   --color-bg-surface: #161b22;
   --color-bg-elevated: #1c2128;
   --color-bg-overlay: #21262d;
+  --color-console-bg: #0d1117;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);
   --color-accent: #3fb950;
@@ -50,6 +51,7 @@
   --color-bg-surface: #ffffff;
   --color-bg-elevated: #f3f4f6;
   --color-bg-overlay: #eaeef2;
+  --color-console-bg: #ffffff;
   --color-border: rgba(31, 35, 40, 0.1);
   --color-border-strong: rgba(31, 35, 40, 0.2);
   --color-accent: #238636;

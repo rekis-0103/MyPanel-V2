@@ -126,8 +126,22 @@ Dashboard hanya menampilkan total resource yang dialokasikan ke server dan
 menandai telemetri host sebagai belum tersedia, sehingga UI tidak menampilkan
 angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
 kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
-Metric server tetap tersedia: CPU dinormalisasi terhadap alokasi vCPU, RAM
-mengurangi cache cgroup, dan disk menghitung file di direktori data server.
+Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
+vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
+cgroup, dan disk menghitung file di direktori data server. Console menghilangkan
+timestamp Docker tambahan, mempertahankan timestamp Minecraft, serta memberi
+warna berbeda pada level INFO/WARN/ERROR dan nama plugin. Setelah container
+dinyalakan, status tetap `starting` dan command console terkunci sampai health
+Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
+terang dengan palette ANSI berkontras tinggi. Warna keluaran plugin didukung
+melalui ANSI SGR, kode Minecraft `§`, legacy `&`, RGB `&x&…`, serta tag
+MiniMessage bernama/hex dan dekorasi. Container baru atau yang diperbarui juga
+meminta logger Adventure menghasilkan ANSI true-color secara eksplisit.
+Event lifecycle control plane ditampilkan oranye di console, termasuk proses
+start/restart, status running/stopped, restart berhasil, dan alasan kegagalan
+yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
+200 event terbaru per server disimpan agar tetap tersedia setelah halaman
+console dimuat ulang.
 
 ## Update dari GitHub
 

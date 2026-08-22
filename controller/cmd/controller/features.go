@@ -297,9 +297,12 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 	}()
 	logUpdates := make(chan consoleLogUpdate, 8)
 	statusUpdates := make(chan agentState, 1)
+	eventUpdates := make(chan consoleEvent, 8)
 	go a.pollConsoleLogs(ctx, serverID, logUpdates)
 	go a.pollConsoleState(ctx, serverID, statusUpdates)
+	go a.pollConsoleEvents(ctx, serverID, eventUpdates)
 	session, _ := currentSession(r.Context())
+	currentState := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -309,6 +312,10 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 		case message := <-incoming:
 			if message.Type != "command" || subtle.ConstantTimeCompare([]byte(message.CSRFToken), []byte(session.CSRFToken)) != 1 || !validCommand(message.Command) {
 				_ = connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "command-result", "error": "command rejected"}))
+				continue
+			}
+			if !consoleCommandReady(currentState) {
+				_ = connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "command-result", "error": "server is still starting"}))
 				continue
 			}
 			output, err := a.agent.command(ctx, serverID, strings.TrimSpace(message.Command))
@@ -326,12 +333,50 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 				return
 			}
 		case state := <-statusUpdates:
+			currentState = state.State
 			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State, "metrics": state})) != nil {
+				return
+			}
+		case event := <-eventUpdates:
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "lifecycle", "message": event.Message, "createdAt": event.CreatedAt})) != nil {
 				return
 			}
 		}
 	}
 }
+
+func (a *app) pollConsoleEvents(ctx context.Context, serverID string, updates chan<- consoleEvent) {
+	initialDelay := time.NewTimer(time.Second)
+	defer initialDelay.Stop()
+	select {
+	case <-ctx.Done():
+		return
+	case <-initialDelay.C:
+	}
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var afterID int64
+	for {
+		items, err := a.store.consoleEvents(ctx, serverID, afterID, consoleEventRetention)
+		if err == nil {
+			for _, item := range items {
+				select {
+				case updates <- item:
+					afterID = item.ID
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func consoleCommandReady(state string) bool { return state == "running" }
 
 type consoleLogUpdate struct {
 	Logs  string

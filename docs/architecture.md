@@ -60,15 +60,39 @@
 
 - Server data lives at `/var/lib/mypanel/servers/<uuid>` and is mounted at
   `/data`; backups live under `/var/lib/mypanel/backups/<uuid>`.
+- The root agent runs with primary GID `1000`, matching the Minecraft runtime,
+  so uploaded files and newly created directories remain readable by the
+  server while retaining restrictive group-based modes.
 - Total container memory is the user allocation. JVM maximum heap defaults to
   80% of that allocation to leave native-memory headroom.
-- Server CPU is reported as 0–100% of its configured vCPU allocation. Working
-  RAM subtracts `inactive_file` on cgroup v2 (falling back to `cache`), and disk
-  usage includes regular files only within the managed server root.
+- Server CPU follows Docker's core-relative percentage: 100% represents one
+  fully used vCPU, so a two-vCPU server can reach 200%. Working RAM subtracts
+  `inactive_file` on cgroup v2 (falling back to `cache`), and disk usage includes
+  regular files only within the managed server root.
+- Docker timestamps are disabled at the log source because Minecraft already
+  emits its own timestamp. The browser applies safe semantic ANSI colors to
+  Minecraft levels and plugin tags while preserving validated ANSI SGR colors
+  and translating Minecraft `§`, plugin legacy `&`/`&x`, and supported
+  MiniMessage color/decorations. Managed JVM defaults request Adventure
+  true-color output while preserving user JVM options and advertise an
+  `xterm-256color`/true-color terminal; non-SGR terminal controls are stripped.
+- The web Content Security Policy keeps scripts restricted to same-origin
+  files. Inline style elements are allowed because xterm.js generates a scoped
+  runtime stylesheet for its ANSI palette; inline script execution remains
+  disallowed.
 - Console commands use the image's named console pipe as UID/GID 1000 instead
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next
   applied.
+- A running Docker process remains `starting` while its Minecraft healthcheck is
+  not healthy. Start and restart jobs wait for readiness before completing, and
+  both the browser and WebSocket command boundary reject commands until the
+  observed state is `running`.
+- Lifecycle messages are persisted in `server_console_events` and streamed as
+  separate WebSocket events. The browser renders them orange, retains the 200
+  latest events per server, and strips embedded terminal controls. Failure
+  reasons are limited to safe categories such as OOM, exit code, disk limit,
+  health timeout, and node availability instead of exposing raw host errors.
 - Startup settings persist validated `jvmOpts` and `extraArgs` in the existing
   JSON config. The agent maps them only to the image-supported `JVM_OPTS` and
   `EXTRA_ARGS` variables; arbitrary shell commands and images remain disallowed.

@@ -28,6 +28,7 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	env := value["Env"].([]string)
 	foundHeap := false
 	foundPipe := false
+	foundTerminal := false
 	for _, item := range env {
 		if item == "MEMORY=1638M" {
 			foundHeap = true
@@ -35,8 +36,11 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 		if item == "CREATE_CONSOLE_IN_PIPE=true" {
 			foundPipe = true
 		}
+		if item == "TERM=xterm-256color" {
+			foundTerminal = true
+		}
 	}
-	if !foundHeap || !foundPipe {
+	if !foundHeap || !foundPipe || !foundTerminal {
 		t.Fatalf("required runtime environment missing: %v", env)
 	}
 	if value["OpenStdin"] != true {
@@ -48,7 +52,7 @@ func TestContainerSpecAppliesValidatedStartupOptions(t *testing.T) {
 	spec := Spec{ID: "id", Runtime: "paper", Version: "1.21.11", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, DataPath: "/data", Config: map[string]any{"jvmOpts": "-XX:+UseG1GC", "extraArgs": "nogui"}}
 	env := ContainerSpec(spec.Image, spec)["Env"].([]string)
 	joined := strings.Join(env, "\n")
-	for _, expected := range []string{"JVM_OPTS=-XX:+UseG1GC", "EXTRA_ARGS=nogui", "ENABLE_RCON=false"} {
+	for _, expected := range []string{"JVM_OPTS=-Dterminal.ansi=true -Dnet.kyori.ansi.colorLevel=truecolor -XX:+UseG1GC", "EXTRA_ARGS=nogui", "ENABLE_RCON=false"} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("%s missing from %v", expected, env)
 		}
@@ -73,6 +77,69 @@ func TestCalculateStatsUsesCgroupV2InactiveFileAndHostCPU(t *testing.T) {
 	}
 }
 
+func TestObservedContainerStateWaitsForHealthyMinecraft(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		running bool
+		status  string
+		health  string
+		want    string
+	}{
+		{"booting", true, "running", "starting", "starting"},
+		{"unhealthy", true, "running", "unhealthy", "starting"},
+		{"ready", true, "running", "healthy", "running"},
+		{"legacy image", true, "running", "", "running"},
+		{"stopped", false, "exited", "", "offline"},
+		{"dead", false, "dead", "", "error"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := observedContainerState(test.running, test.status, test.health); got != test.want {
+				t.Fatalf("observedContainerState() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestContainerFailureReasonIsActionableAndSafe(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		running, oomKilled bool
+		status             string
+		exitCode           int
+		runtimeError, want string
+	}{
+		{"running", true, false, "running", 0, "", ""},
+		{"out of memory", false, true, "exited", 137, "", "process exceeded the server memory limit"},
+		{"non-zero exit", false, false, "exited", 1, "", "process exited with code 1"},
+		{"runtime failure is redacted", false, false, "dead", 0, "/private/docker.sock: permission denied", "container runtime reported a failure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := containerFailureReason(test.running, test.status, test.oomKilled, test.exitCode, test.runtimeError); got != test.want {
+				t.Fatalf("containerFailureReason() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestStatsWaitsForAnAccurateCPUSample(t *testing.T) {
+	var path string
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		path = request.URL.RequestURI()
+		body := `{"memory_stats":{"usage":800,"stats":{"inactive_file":300}},"cpu_stats":{"cpu_usage":{"total_usage":300},"system_cpu_usage":1100,"online_cpus":8},"precpu_stats":{"cpu_usage":{"total_usage":100},"system_cpu_usage":100}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+	result, err := client.stats(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(path, "one-shot") || path != "/containers/mypanel-serverid/stats?stream=false" {
+		t.Fatalf("stats request path = %q", path)
+	}
+	if result.CPUPercent != 160 {
+		t.Fatalf("CPU percent = %v, want 160", result.CPUPercent)
+	}
+}
+
 func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	var create map[string]any
 	requests := 0
@@ -92,6 +159,24 @@ func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	command := create["Cmd"].([]any)
 	if command[0] != "mc-send-to-console" || command[1] != "say hello" || create["User"] != "1000:1000" {
 		t.Fatalf("exec configuration = %#v", create)
+	}
+}
+
+func TestLogsDoesNotAddDockerTimestamps(t *testing.T) {
+	var path string
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		path = request.URL.RequestURI()
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("[06:59:03 INFO]: Done\n")), Header: make(http.Header)}, nil
+	})}}
+	logs, err := client.Logs(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(path, "timestamps=0") {
+		t.Fatalf("logs request path = %q", path)
+	}
+	if logs != "[06:59:03 INFO]: Done\n" {
+		t.Fatalf("logs = %q", logs)
 	}
 }
 

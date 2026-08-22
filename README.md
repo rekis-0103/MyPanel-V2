@@ -133,7 +133,9 @@ timestamp Docker tambahan, mempertahankan timestamp Minecraft, serta memberi
 warna berbeda pada level INFO/WARN/ERROR dan nama plugin. Setelah container
 dinyalakan, status tetap `starting` dan command console terkunci sampai health
 Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
-terang dengan palette ANSI berkontras tinggi.
+terang dengan palette ANSI berkontras tinggi. Warna keluaran plugin didukung
+melalui ANSI SGR, kode Minecraft `§`, legacy `&`, RGB `&x&…`, serta tag
+MiniMessage bernama/hex dan dekorasi.
 
 ## Update dari GitHub
 

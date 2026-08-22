@@ -68,8 +68,9 @@
   regular files only within the managed server root.
 - Docker timestamps are disabled at the log source because Minecraft already
   emits its own timestamp. The browser applies safe semantic ANSI colors to
-  Minecraft levels and plugin tags while preserving validated ANSI/section-code
-  colors from the server.
+  Minecraft levels and plugin tags while preserving validated ANSI SGR colors
+  and translating Minecraft `§`, plugin legacy `&`/`&x`, and supported
+  MiniMessage color/decorations. Non-SGR terminal controls are stripped.
 - Console commands use the image's named console pipe as UID/GID 1000 instead
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next

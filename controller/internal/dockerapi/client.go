@@ -340,9 +340,11 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 			environment = append(environment, envName+"="+fmt.Sprint(value))
 		}
 	}
+	jvmOpts := "-Dterminal.ansi=true -Dnet.kyori.ansi.colorLevel=truecolor"
 	if value, ok := spec.Config["jvmOpts"]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
-		environment = append(environment, "JVM_OPTS="+strings.TrimSpace(fmt.Sprint(value)))
+		jvmOpts += " " + strings.TrimSpace(fmt.Sprint(value))
 	}
+	environment = append(environment, "JVM_OPTS="+jvmOpts)
 	if value, ok := spec.Config["extraArgs"]; ok && strings.TrimSpace(fmt.Sprint(value)) != "" {
 		environment = append(environment, "EXTRA_ARGS="+strings.TrimSpace(fmt.Sprint(value)))
 	}

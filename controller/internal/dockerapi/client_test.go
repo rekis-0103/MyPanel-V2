@@ -48,7 +48,7 @@ func TestContainerSpecAppliesValidatedStartupOptions(t *testing.T) {
 	spec := Spec{ID: "id", Runtime: "paper", Version: "1.21.11", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, DataPath: "/data", Config: map[string]any{"jvmOpts": "-XX:+UseG1GC", "extraArgs": "nogui"}}
 	env := ContainerSpec(spec.Image, spec)["Env"].([]string)
 	joined := strings.Join(env, "\n")
-	for _, expected := range []string{"JVM_OPTS=-XX:+UseG1GC", "EXTRA_ARGS=nogui", "ENABLE_RCON=false"} {
+	for _, expected := range []string{"JVM_OPTS=-Dterminal.ansi=true -Dnet.kyori.ansi.colorLevel=truecolor -XX:+UseG1GC", "EXTRA_ARGS=nogui", "ENABLE_RCON=false"} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("%s missing from %v", expected, env)
 		}

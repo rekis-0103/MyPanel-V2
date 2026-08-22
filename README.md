@@ -25,7 +25,8 @@ Pterodactyl yang kompatibel langsung.
   drag-and-drop dan download, backup/restore, schedule, settings, dan audit log.
 - Agent privat dengan mTLS. Controller dan web tidak menerima Docker socket.
 - Compose dengan secret files, network terpisah, filesystem read-only, capability
-  drop, log rotation, serta health/readiness check.
+  minimum, log rotation, serta health/readiness check. Agent hanya mempertahankan
+  `DAC_OVERRIDE` agar dapat mengelola direktori data milik UID Minecraft.
 
 Detail boundary dan data flow ada di [docs/architecture.md](docs/architecture.md),
 sedangkan kontrak HTTP ada di [docs/api.md](docs/api.md).

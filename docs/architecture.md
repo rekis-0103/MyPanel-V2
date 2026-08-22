@@ -85,9 +85,14 @@
   create that pipe; existing containers receive it when their config is next
   applied.
 - A running Docker process remains `starting` while its Minecraft healthcheck is
-  not healthy. Lifecycle jobs preserve that transition, and both the browser and
-  WebSocket command boundary reject commands until the observed state is
-  `running`.
+  not healthy. Start and restart jobs wait for readiness before completing, and
+  both the browser and WebSocket command boundary reject commands until the
+  observed state is `running`.
+- Lifecycle messages are persisted in `server_console_events` and streamed as
+  separate WebSocket events. The browser renders them orange, retains the 200
+  latest events per server, and strips embedded terminal controls. Failure
+  reasons are limited to safe categories such as OOM, exit code, disk limit,
+  health timeout, and node availability instead of exposing raw host errors.
 - Startup settings persist validated `jvmOpts` and `extraArgs` in the existing
   JSON config. The agent maps them only to the image-supported `JVM_OPTS` and
   `EXTRA_ARGS` variables; arbitrary shell commands and images remain disallowed.

@@ -137,6 +137,11 @@ terang dengan palette ANSI berkontras tinggi. Warna keluaran plugin didukung
 melalui ANSI SGR, kode Minecraft `§`, legacy `&`, RGB `&x&…`, serta tag
 MiniMessage bernama/hex dan dekorasi. Container baru atau yang diperbarui juga
 meminta logger Adventure menghasilkan ANSI true-color secara eksplisit.
+Event lifecycle control plane ditampilkan oranye di console, termasuk proses
+start/restart, status running/stopped, restart berhasil, dan alasan kegagalan
+yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
+200 event terbaru per server disimpan agar tetap tersedia setelah halaman
+console dimuat ulang.
 
 ## Update dari GitHub
 

@@ -25,6 +25,23 @@
 5. The UI receives job/state changes through normal polling and console events
    over an authenticated WebSocket.
 
+## Frontend structure
+
+- React Router exposes stable deep links for dashboard, server overview,
+  console, files, backups, schedules, settings, and activity. Caddy's SPA
+  fallback serves `index.html` for direct route access.
+- `App` retains authentication, catalog/server loading, lifecycle actions, and
+  polling. Page and layout components consume those operations without
+  duplicating controller business rules.
+- Shared UI primitives and CSS design tokens provide status, metrics, actions,
+  modal confirmation, toast feedback, loading, empty, and error states.
+- The interface defaults to Indonesian and can switch to English. Only the
+  locale and last selected server ID are stored in browser local storage; no
+  credential or session token is persisted there.
+- Console rendering uses xterm.js but preserves the existing authenticated
+  WebSocket contract. Host-wide telemetry is intentionally presented as
+  unavailable until the controller exposes an authoritative endpoint.
+
 ## Public contracts
 
 - Existing `/api/v1` paths remain the public namespace.

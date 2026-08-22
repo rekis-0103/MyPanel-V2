@@ -19,8 +19,10 @@ Pterodactyl yang kompatibel langsung.
   Minecraft serta Java 21/25 yang dapat dipilih per server.
 - Alokasi port otomatis; limit CPU, total memory, JVM heap headroom, PID, dan
   kuota disk yang dipantau agent.
-- Console WebSocket interaktif, metrics, file manager terkurung pada root server,
-  backup/restore, schedule, settings, dan audit activity.
+- UI responsif dengan sidebar desktop, navigasi bawah mobile, deep-link per
+  server, serta pilihan bahasa Indonesia/English yang tersimpan di browser.
+- Console xterm.js melalui WebSocket, metrics, file manager tabel dengan upload
+  drag-and-drop dan download, backup/restore, schedule, settings, dan audit log.
 - Agent privat dengan mTLS. Controller dan web tidak menerima Docker socket.
 - Compose dengan secret files, network terpisah, filesystem read-only, capability
   drop, log rotation, serta health/readiness check.
@@ -108,8 +110,16 @@ pnpm build
 ```
 
 Frontend dev server memakai `pnpm dev` dan mem-proxy `/api` ke controller pada
-`127.0.0.1:8080`. Untuk validasi deployment, jalankan
+`127.0.0.1:8080`. Buka `http://127.0.0.1:5173`; route seperti
+`/servers/<id>/console` dapat dibuka langsung dan akan tetap bekerja di image
+Caddy produksi. Untuk validasi deployment, jalankan
 `docker compose config --quiet` sebelum `docker compose up`.
+
+Telemetri CPU, RAM, disk, dan uptime host belum memiliki endpoint global.
+Dashboard hanya menampilkan total resource yang dialokasikan ke server dan
+menandai telemetri host sebagai belum tersedia, sehingga UI tidak menampilkan
+angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
+kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
 
 ## Update dari GitHub
 

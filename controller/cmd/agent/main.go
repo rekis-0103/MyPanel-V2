@@ -226,10 +226,11 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			if disk > int64(spec.DiskMB)*1024*1024 {
 				_ = a.docker.Stop(ctx, id)
 				state.State = "error"
+				state.Reason = "server disk limit exceeded"
 			}
 		}
 		write(w, http.StatusOK, map[string]any{"state": state.State, "cpuPercent": state.CPUPercent,
-			"memoryBytes": state.MemoryBytes, "diskBytes": disk, "players": 0})
+			"reason": state.Reason, "memoryBytes": state.MemoryBytes, "diskBytes": disk, "players": 0})
 	case "logs":
 		if r.Method != http.MethodGet {
 			method(w)

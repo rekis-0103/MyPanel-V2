@@ -34,6 +34,7 @@ type Spec struct {
 
 type State struct {
 	State       string  `json:"state"`
+	Reason      string  `json:"reason,omitempty"`
 	CPUPercent  float64 `json:"cpuPercent"`
 	MemoryBytes int64   `json:"memoryBytes"`
 }
@@ -162,9 +163,12 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 	}
 	var response struct {
 		State struct {
-			Running bool   `json:"Running"`
-			Status  string `json:"Status"`
-			Health  *struct {
+			Running   bool   `json:"Running"`
+			Status    string `json:"Status"`
+			Error     string `json:"Error"`
+			ExitCode  int    `json:"ExitCode"`
+			OOMKilled bool   `json:"OOMKilled"`
+			Health    *struct {
 				Status string `json:"Status"`
 			} `json:"Health"`
 		} `json:"State"`
@@ -177,7 +181,7 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		health = response.State.Health.Status
 	}
 	state := observedContainerState(response.State.Running, response.State.Status, health)
-	out := State{State: state}
+	out := State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}
 	if response.State.Running {
 		metrics, err := c.stats(ctx, id)
 		if err == nil {
@@ -186,6 +190,22 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		}
 	}
 	return out, nil
+}
+
+func containerFailureReason(running bool, status string, oomKilled bool, exitCode int, runtimeError string) string {
+	if running || status == "created" || status == "restarting" {
+		return ""
+	}
+	if oomKilled {
+		return "process exceeded the server memory limit"
+	}
+	if exitCode != 0 {
+		return fmt.Sprintf("process exited with code %d", exitCode)
+	}
+	if status == "dead" || strings.TrimSpace(runtimeError) != "" {
+		return "container runtime reported a failure"
+	}
+	return ""
 }
 
 func observedContainerState(running bool, status, health string) string {

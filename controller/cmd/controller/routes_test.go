@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestValidateServerConfig(t *testing.T) {
 	valid := map[string]any{
@@ -66,14 +70,34 @@ func TestConsoleDeltaAppendsNewLinesWithoutRedrawing(t *testing.T) {
 }
 
 func TestLifecycleCompletionWaitsForReadiness(t *testing.T) {
-	if got := lifecycleCompletionState("start"); got != "starting" {
+	if got := lifecycleCompletionState("start"); got != "running" {
 		t.Fatalf("start completion state = %q", got)
 	}
-	if got := lifecycleCompletionState("restart"); got != "starting" {
+	if got := lifecycleCompletionState("restart"); got != "running" {
 		t.Fatalf("restart completion state = %q", got)
 	}
 	if got := lifecycleCompletionState("stop"); got != "offline" {
 		t.Fatalf("stop completion state = %q", got)
+	}
+}
+
+func TestLifecycleMessagesAreActionableWithoutLeakingInternalErrors(t *testing.T) {
+	if got := lifecycleActionMessage("start"); got != "Starting server..." {
+		t.Fatalf("start message = %q", got)
+	}
+	if got := lifecycleActionMessage("restart"); got != "Restarting server..." {
+		t.Fatalf("restart message = %q", got)
+	}
+	message := lifecycleFailureMessage("start", errors.New("open /private/docker.sock: permission denied"))
+	if strings.Contains(message, "/private/docker.sock") || !strings.Contains(message, "node could not complete") {
+		t.Fatalf("unsafe lifecycle message = %q", message)
+	}
+	if got := lifecycleFailureMessage("runtime", errors.New("process exited with code 137")); !strings.Contains(got, "process exited with code 137") {
+		t.Fatalf("exit reason missing from %q", got)
+	}
+	message = lifecycleFailureMessage("runtime", errors.New("process exited with code 137 at /private/runtime/path"))
+	if strings.Contains(message, "/private/runtime/path") {
+		t.Fatalf("exit reason leaked internal path: %q", message)
 	}
 }
 

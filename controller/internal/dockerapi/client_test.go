@@ -100,6 +100,27 @@ func TestObservedContainerStateWaitsForHealthyMinecraft(t *testing.T) {
 	}
 }
 
+func TestContainerFailureReasonIsActionableAndSafe(t *testing.T) {
+	for _, test := range []struct {
+		name               string
+		running, oomKilled bool
+		status             string
+		exitCode           int
+		runtimeError, want string
+	}{
+		{"running", true, false, "running", 0, "", ""},
+		{"out of memory", false, true, "exited", 137, "", "process exceeded the server memory limit"},
+		{"non-zero exit", false, false, "exited", 1, "", "process exited with code 1"},
+		{"runtime failure is redacted", false, false, "dead", 0, "/private/docker.sock: permission denied", "container runtime reported a failure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := containerFailureReason(test.running, test.status, test.oomKilled, test.exitCode, test.runtimeError); got != test.want {
+				t.Fatalf("containerFailureReason() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestStatsWaitsForAnAccurateCPUSample(t *testing.T) {
 	var path string
 	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

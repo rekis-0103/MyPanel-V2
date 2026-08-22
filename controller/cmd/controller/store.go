@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -315,6 +316,59 @@ func (s *store) finishJob(ctx context.Context, id string, result any, jobErr err
 	_, err = s.db.Exec(ctx, `UPDATE jobs SET status=$2,result=$3,error=$4,completed_at=now(),updated_at=now()
 WHERE id=$1`, id, status, data, message)
 	return err
+}
+
+func (s *store) addConsoleEvent(ctx context.Context, serverID, message string) error {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return nil
+	}
+	characters := []rune(message)
+	if len(characters) > 500 {
+		message = string(characters[:500])
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `INSERT INTO server_console_events (server_id,message) VALUES ($1,$2)`, serverID, message); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM server_console_events WHERE server_id=$1 AND id NOT IN (
+  SELECT id FROM server_console_events WHERE server_id=$1 ORDER BY id DESC LIMIT 200
+)`, serverID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *store) consoleEvents(ctx context.Context, serverID string, afterID int64, limit int) ([]consoleEvent, error) {
+	if limit < 1 || limit > 200 {
+		limit = 100
+	}
+	query := `SELECT id,message,created_at FROM server_console_events
+WHERE server_id=$1 AND id>$2 ORDER BY id LIMIT $3`
+	if afterID == 0 {
+		query = `SELECT id,message,created_at FROM (
+  SELECT id,message,created_at FROM server_console_events
+  WHERE server_id=$1 ORDER BY id DESC LIMIT $3
+) recent ORDER BY id`
+	}
+	rows, err := s.db.Query(ctx, query, serverID, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]consoleEvent, 0)
+	for rows.Next() {
+		var item consoleEvent
+		if err := rows.Scan(&item.ID, &item.Message, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *store) userCount(ctx context.Context) (int, error) {

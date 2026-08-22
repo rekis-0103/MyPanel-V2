@@ -7,7 +7,7 @@ import { EmptyState, Skeleton } from '../components/ui/States';
 import { MetricBar } from '../components/ui/MetricBar';
 import { StatusBadge, normalizeStatus } from '../components/ui/StatusBadge';
 import { useI18n } from '../i18n';
-import { formatBytes, formatDate } from '../format';
+import { formatBytes, formatDate, serverAddress } from '../format';
 import type { AuditEvent, Metrics, Server } from '../types';
 
 export function Dashboard({ servers, busy, act, onError }: { servers: Server[]; busy: boolean; act: (server: Server, action: string) => Promise<void>; onError: (error: unknown) => void }) {
@@ -43,8 +43,8 @@ export function Dashboard({ servers, busy, act, onError }: { servers: Server[]; 
 
 export function ServerCard({ server, metrics, busy, act }: { server: Server; metrics: Metrics | null | undefined; busy: boolean; act: (server: Server, action: string) => Promise<void> }) {
   const { tr } = useI18n(); const navigate = useNavigate(); const running = server.state === 'running';
-  return <article className="server-card" onClick={() => navigate(`/servers/${server.id}/overview`)}>
-    <div className="server-card-head"><StatusBadge status={normalizeStatus(server.state)} compact /><div><h3>{server.name}</h3><p>{server.runtime} {server.version} · Java {server.javaVersion} · :{server.port}</p></div></div>
+  return <article className="server-card" onClick={() => navigate(`/servers/${server.id}/console`)}>
+    <div className="server-card-head"><StatusBadge status={normalizeStatus(server.state)} compact /><div><h3>{server.name}</h3><p>{server.runtime} {server.version} · Java {server.javaVersion} · {serverAddress(server.bindIp, server.port)}</p></div></div>
     <div className="server-inline-metrics"><span><Users />{metrics?.players ?? 0}/{Number(server.config?.maxPlayers ?? 20)}</span><span><MemoryStick />{metrics ? formatBytes(metrics.memoryBytes) : '—'} / {formatBytes(server.memoryMb * 1024 * 1024)}</span><span><Cpu />{metrics ? `${metrics.cpuPercent.toFixed(1)}%` : '—'}</span></div>
     <div className="server-quick-actions" onClick={(event) => event.stopPropagation()}>
       <ActionButton size="sm" variant={running ? 'danger' : 'primary'} loading={busy || !!server.currentJob} disabled={server.state === 'starting' || server.state === 'stopping'} onClick={() => act(server, running ? 'stop' : 'start')}>{running ? tr('Stop', 'Stop') : tr('Mulai', 'Start')}</ActionButton>

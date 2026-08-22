@@ -11,7 +11,6 @@ import { ActivityLog } from './pages/ActivityLog';
 import { Backups } from './pages/Backups';
 import { Dashboard } from './pages/Dashboard';
 import { FileManager } from './pages/FileManager';
-import { Overview } from './pages/Overview';
 import { Schedules } from './pages/Schedules';
 import { ServerSettings } from './pages/ServerSettings';
 import { ServersPage } from './pages/Servers';
@@ -37,7 +36,6 @@ export function App() {
     <Route path="dashboard" element={<Page title={tr('Dashboard gagal dimuat.', 'Dashboard failed to load.')}><Dashboard servers={servers} busy={busy} act={act} onError={handleError} /></Page>} />
     <Route path="servers" element={<Page title={tr('Daftar server gagal dimuat.', 'Server list failed to load.')}><ServersPage servers={servers} catalog={catalog} busy={busy} act={act} setBusy={setBusy} onCreated={async () => { showToast(tr('Server dibuat dan provisioning dimulai.', 'Server created and provisioning started.'), 'success'); await loadServers(); }} onError={handleError} /></Page>} />
     <Route path="servers/:serverId" element={<ServerRedirect servers={servers} />} />
-    <Route path="servers/:serverId/overview" element={<ServerPage servers={servers}>{(server) => <Overview server={server} />}</ServerPage>} />
     <Route path="servers/:serverId/console" element={<ServerPage servers={servers}>{(server) => <Suspense fallback={<div className="surface"><span className="spinner" /></div>}><ConsolePage server={server} csrfToken={session.csrfToken} busy={busy} act={act} /></Suspense>}</ServerPage>} />
     <Route path="servers/:serverId/files" element={<ServerPage servers={servers}>{(server) => <FileManager server={server} notify={notify} onError={handleError} />}</ServerPage>} />
     <Route path="servers/:serverId/backups" element={<ServerPage servers={servers}>{(server) => <Backups server={server} notify={notify} onError={handleError} />}</ServerPage>} />
@@ -49,7 +47,7 @@ export function App() {
 }
 
 function Page({ title, children }: { title: string; children: ReactNode }) { const { tr } = useI18n(); return <PageErrorBoundary message={title} reloadLabel={tr('Muat ulang', 'Reload')}>{children}</PageErrorBoundary>; }
-function ServerRedirect({ servers }: { servers: Server[] }) { const { serverId } = useParams(); return servers.some((server) => server.id === serverId) ? <Navigate to={`/servers/${serverId}/overview`} replace /> : <Navigate to="/servers" replace />; }
+function ServerRedirect({ servers }: { servers: Server[] }) { const { serverId } = useParams(); return servers.some((server) => server.id === serverId) ? <Navigate to={`/servers/${serverId}/console`} replace /> : <Navigate to="/servers" replace />; }
 function ServerPage({ servers, children }: { servers: Server[]; children: (server: Server) => ReactNode }) { const { tr } = useI18n(); const { serverId } = useParams(); const server = servers.find((item) => item.id === serverId); if (!server) return <Navigate to="/servers" replace />; return <Page title={tr('Halaman server gagal dimuat.', 'Server page failed to load.')}>{children(server)}</Page>; }
 
 function LoadingScreen() { const { tr } = useI18n(); return <main className="loading-screen"><div className="brand-emblem"><ServerIcon /></div><span className="spinner" /><p>{tr('Menghubungkan ke control plane…', 'Connecting to the control plane…')}</p></main>; }

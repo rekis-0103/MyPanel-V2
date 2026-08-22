@@ -7,6 +7,8 @@ import { I18nProvider } from './i18n';
 import './styles/tokens.css';
 import './style.css';
 
+document.documentElement.dataset.theme = localStorage.getItem('mypanel.theme') === 'light' ? 'light' : 'dark';
+
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <I18nProvider><ToastProvider><BrowserRouter><App /></BrowserRouter></ToastProvider></I18nProvider>

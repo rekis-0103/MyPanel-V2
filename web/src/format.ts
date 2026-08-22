@@ -9,3 +9,8 @@ export function formatDate(value: string) {
   const locale = localStorage.getItem('mypanel.locale') === 'en' ? 'en-US' : 'id-ID';
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
+
+export function serverAddress(bindIp: string, port: number, panelHostname = window.location.hostname) {
+  const host = bindIp === '0.0.0.0' || bindIp === '::' || bindIp === '' ? panelHostname : bindIp;
+  return `${host}:${port}`;
+}

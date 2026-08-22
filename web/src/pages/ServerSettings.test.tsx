@@ -17,4 +17,12 @@ describe('ServerSettings danger zone', () => {
     fireEvent.change(screen.getByLabelText('Nama server'), { target: { value: 'BocahSMP' } });
     expect(confirm).toBeEnabled();
   });
+
+  it('exposes controlled startup options without an arbitrary shell field', () => {
+    render(<I18nProvider><ServerSettings server={server} reload={async () => undefined} notify={() => undefined} onError={() => undefined} remove={vi.fn()} /></I18nProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Startup' }));
+    expect(screen.getByLabelText('JVM options')).toBeInTheDocument();
+    expect(screen.getByLabelText('Argumen server')).toBeInTheDocument();
+    expect(screen.getByLabelText('Perintah yang dikelola')).toHaveAttribute('readonly');
+  });
 });

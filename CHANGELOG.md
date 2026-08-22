@@ -12,6 +12,8 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
   migrasi kompatibel untuk server lama.
 - Script update VM berbasis fast-forward dengan build, migrasi eksplisit,
   rollout Compose, readiness check, serta systemd timer opsional.
+- Navigasi server kontekstual, mode terang/gelap, grafik metric pada console,
+  alamat server yang mengikuti hostname panel, dan pengaturan startup tervalidasi.
 
 ### Fixed
 
@@ -19,6 +21,9 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
   tersebut berhasil melewati readiness check.
 - Container Minecraft dapat menyiapkan ownership data dan berpindah ke user
   non-root dengan capability bootstrap minimum.
+- CPU dan working-memory server dihitung sesuai limit/cgroup, console dikirim
+  incremental dengan dukungan warna aman, dan command tidak lagi membuat noise
+  koneksi RCON per perintah.
 
 ## [0.1.0] - 2026-08-20
 

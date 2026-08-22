@@ -19,9 +19,10 @@ Pterodactyl yang kompatibel langsung.
   Minecraft serta Java 21/25 yang dapat dipilih per server.
 - Alokasi port otomatis; limit CPU, total memory, JVM heap headroom, PID, dan
   kuota disk yang dipantau agent.
-- UI responsif dengan sidebar desktop, navigasi bawah mobile, deep-link per
-  server, serta pilihan bahasa Indonesia/English yang tersimpan di browser.
-- Console xterm.js melalui WebSocket, metrics, file manager tabel dengan upload
+- UI responsif dengan navigasi server kontekstual, mode terang/gelap, navigasi
+  bawah mobile, deep-link per server, serta pilihan bahasa Indonesia/English.
+- Console xterm.js berwarna melalui WebSocket incremental, grafik CPU/RAM/disk,
+  file manager tabel dengan upload
   drag-and-drop dan download, backup/restore, schedule, settings, dan audit log.
 - Agent privat dengan mTLS. Controller dan web tidak menerima Docker socket.
 - Compose dengan secret files, network terpisah, filesystem read-only, capability
@@ -89,6 +90,10 @@ World dan backup berada di `/var/lib/mypanel`. PostgreSQL dan Redis memakai name
 volume Docker. Jangan menjalankan `docker compose down -v` kecuali memang ingin
 menghapus state database, session, dan sertifikat internal.
 
+Alamat server yang bind ke `0.0.0.0` ditampilkan menggunakan hostname panel,
+sehingga panel pada `192.168.56.101` mengiklankan `192.168.56.101:<port>` tanpa
+mengubah bind Docker yang tetap menerima koneksi pada seluruh interface.
+
 Saat membuat server, pilih Java 21 untuk kompatibilitas luas atau Java 25 untuk
 server/plugin modern yang sudah mendukungnya. Image dapat dipin melalui
 `MINECRAFT_IMAGE_JAVA_21` dan `MINECRAFT_IMAGE_JAVA_25` di `.env`; browser tidak
@@ -121,6 +126,8 @@ Dashboard hanya menampilkan total resource yang dialokasikan ke server dan
 menandai telemetri host sebagai belum tersedia, sehingga UI tidak menampilkan
 angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
 kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
+Metric server tetap tersedia: CPU dinormalisasi terhadap alokasi vCPU, RAM
+mengurangi cache cgroup, dan disk menghitung file di direktori data server.
 
 ## Update dari GitHub
 

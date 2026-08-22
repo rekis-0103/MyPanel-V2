@@ -27,8 +27,10 @@
 
 ## Frontend structure
 
-- React Router exposes stable deep links for dashboard, server overview,
-  console, files, backups, schedules, settings, and activity. Caddy's SPA
+- React Router exposes stable deep links for dashboard, server list, console,
+  files, backups, schedules, settings, and activity. Server cards enter the
+  console directly; server-specific navigation is only rendered on a server
+  route. Caddy's SPA
   fallback serves `index.html` for direct route access.
 - `App` retains authentication, catalog/server loading, lifecycle actions, and
   polling. Page and layout components consume those operations without
@@ -38,8 +40,9 @@
 - The interface defaults to Indonesian and can switch to English. Only the
   locale and last selected server ID are stored in browser local storage; no
   credential or session token is persisted there.
-- Console rendering uses xterm.js but preserves the existing authenticated
-  WebSocket contract. Host-wide telemetry is intentionally presented as
+- Console rendering uses xterm.js with an authenticated incremental WebSocket
+  stream. Safe SGR and Minecraft color codes are rendered, while cursor/title
+  control sequences are removed. Host-wide telemetry is intentionally presented as
   unavailable until the controller exposes an authoritative endpoint.
 
 ## Public contracts
@@ -59,6 +62,16 @@
   `/data`; backups live under `/var/lib/mypanel/backups/<uuid>`.
 - Total container memory is the user allocation. JVM maximum heap defaults to
   80% of that allocation to leave native-memory headroom.
+- Server CPU is reported as 0–100% of its configured vCPU allocation. Working
+  RAM subtracts `inactive_file` on cgroup v2 (falling back to `cache`), and disk
+  usage includes regular files only within the managed server root.
+- Console commands use the image's named console pipe as UID/GID 1000 instead
+  of opening one RCON connection per command. Runtime updates enable stdin and
+  create that pipe; existing containers receive it when their config is next
+  applied.
+- Startup settings persist validated `jvmOpts` and `extraArgs` in the existing
+  JSON config. The agent maps them only to the image-supported `JVM_OPTS` and
+  `EXTRA_ARGS` variables; arbitrary shell commands and images remain disallowed.
 - Java version is persisted per server and restricted to the controller/agent
   allowlist. The agent maps Java 21 and 25 to operator-configured image names;
   arbitrary container images never cross the browser trust boundary.

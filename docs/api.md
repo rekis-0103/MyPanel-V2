@@ -37,6 +37,12 @@ client lama dianggap `21`. Respons server selalu menyertakan `javaVersion`.
 Nama/tag image tidak pernah diterima dari browser; agent memetakan versi yang
 sudah divalidasi ke image yang dikonfigurasi operator.
 
+Config menerima properti server yang sudah ada serta `jvmOpts` dan `extraArgs`.
+Kedua startup field dibatasi 512 karakter dan hanya menerima karakter allowlist;
+shell operator, quote, newline, command substitution, dan Java argument file
+ditolak. Update config membuat ulang container melalui job durable dan tidak
+menghapus direktori data.
+
 ## Runtime features
 
 - `GET /api/v1/servers/{id}/metrics`
@@ -51,7 +57,9 @@ sudah divalidasi ke image yang dikonfigurasi operator.
 
 `/api/v1/servers/{id}/console` di-upgrade menjadi WebSocket. Client mengirim
 `{"type":"command","command":"say hi","csrfToken":"..."}` dan menerima event
-`log`, `status`, serta `command-result`.
+`log`, `status`, serta `command-result`. Event `log` membawa `reset` untuk
+membedakan snapshot awal dari chunk incremental. Event `status` membawa objek
+`metrics` berisi `state`, `cpuPercent`, `memoryBytes`, `diskBytes`, dan `players`.
 
 File dibatasi 10 MiB per operasi dan path absolut, traversal, serta symlink yang
 keluar dari root server ditolak agent. Pesan error node sengaja disanitasi pada

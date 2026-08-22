@@ -18,6 +18,7 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
   const { tr } = useI18n();
   const host = useRef<HTMLDivElement>(null); const socket = useRef<WebSocket | null>(null); const terminal = useRef<XTerminal | null>(null);
   const writeQueue = useRef<PendingWrite[]>([]); const writeFrame = useRef<number | null>(null);
+  const lifecycleHistory = useRef<string[]>([]);
   const [connection, setConnection] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [paused, setPaused] = useState(false); const pausedRef = useRef(false); const [result, setResult] = useState('');
   const [metrics, setMetrics] = useState<Metrics | null>(null); const [history, setHistory] = useState<History>({ cpu: [], memory: [], disk: [] });
@@ -35,6 +36,7 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
     return () => { if (writeFrame.current !== null) window.cancelAnimationFrame(writeFrame.current); writeQueue.current = []; themeObserver.disconnect(); scroll.dispose(); resize.disconnect(); term.dispose(); terminal.current = null; };
   }, []);
   useEffect(() => {
+    lifecycleHistory.current = [];
     let active = true; let retry: number | undefined;
     const enqueue = (write: PendingWrite) => {
       writeQueue.current.push(write);
@@ -53,8 +55,12 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
       ws.onopen = () => setConnection('connected');
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
-        if (message.type === 'log') enqueue({ text: renderConsoleText(String(message.logs ?? '')), reset: message.reset === true, follow: !pausedRef.current });
-        if (message.type === 'lifecycle') enqueue({ text: renderLifecycleMessage(String(message.message ?? '')), reset: false, follow: !pausedRef.current });
+        if (message.type === 'log') enqueue({ text: renderConsoleUpdate(String(message.logs ?? ''), message.reset === true, lifecycleHistory.current), reset: message.reset === true, follow: !pausedRef.current });
+        if (message.type === 'lifecycle') {
+          const text = renderLifecycleMessage(String(message.message ?? ''));
+          if (text) lifecycleHistory.current = [...lifecycleHistory.current.slice(-99), text];
+          enqueue({ text, reset: false, follow: !pausedRef.current });
+        }
         if (message.type === 'status' && message.metrics) {
           const next = message.metrics as Metrics; setMetrics(next); if (typeof message.state === 'string') setRuntimeState(message.state as Server['state']);
           setHistory((current) => ({ cpu: appendSample(current.cpu, next.cpuPercent), memory: appendSample(current.memory, next.memoryBytes), disk: appendSample(current.disk, next.diskBytes) }));
@@ -109,6 +115,10 @@ export function renderConsoleText(logs: string) {
 export function renderLifecycleMessage(message: string) {
   const plain = sanitizeTerminalText(message).replace(/\x1b\[[0-9;]*m/g, '').trim();
   return plain ? `\r\n\x1b[38;5;208m[MyPanel] ${plain}\x1b[0m\r\n` : '';
+}
+
+export function renderConsoleUpdate(logs: string, reset: boolean, lifecycleHistory: string[]) {
+  return renderConsoleText(logs) + (reset ? lifecycleHistory.join('') : '');
 }
 
 function renderConsoleLine(line: string) {

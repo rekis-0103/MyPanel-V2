@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleText, renderLifecycleMessage, sanitizeTerminalText } from './Console';
+import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleText, renderConsoleUpdate, renderLifecycleMessage, sanitizeTerminalText } from './Console';
 
 describe('canSendConsoleCommand', () => {
   it('blocks commands until the server is fully running', () => {
@@ -97,5 +97,12 @@ describe('renderLifecycleMessage', () => {
   it('does not allow an event message to override the lifecycle color', () => {
     expect(renderLifecycleMessage('\x1b[31munsafe color\x1b[0m')).toContain('[MyPanel] unsafe color\x1b[0m');
     expect(renderLifecycleMessage('\x1b[31munsafe color\x1b[0m')).not.toContain('\x1b[31m');
+  });
+
+  it('replays lifecycle history after a Docker log reset', () => {
+    const event = renderLifecycleMessage('Restarting server...');
+    const rendered = renderConsoleUpdate('[10:00:00 INFO]: booting\n', true, [event]);
+    expect(rendered).toContain('booting');
+    expect(rendered).toContain('[MyPanel] Restarting server...');
   });
 });

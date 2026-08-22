@@ -183,7 +183,7 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			internal(w, err)
 			return
 		}
-		write(w, http.StatusOK, map[string]string{"state": map[bool]string{true: "offline", false: "running"}[action == "stop"]})
+		write(w, http.StatusOK, map[string]string{"state": map[bool]string{true: "offline", false: "starting"}[action == "stop"]})
 	case "delete":
 		if r.Method != http.MethodPost {
 			method(w)

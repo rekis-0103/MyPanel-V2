@@ -73,6 +73,29 @@ func TestCalculateStatsUsesCgroupV2InactiveFileAndHostCPU(t *testing.T) {
 	}
 }
 
+func TestObservedContainerStateWaitsForHealthyMinecraft(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		running bool
+		status  string
+		health  string
+		want    string
+	}{
+		{"booting", true, "running", "starting", "starting"},
+		{"unhealthy", true, "running", "unhealthy", "starting"},
+		{"ready", true, "running", "healthy", "running"},
+		{"legacy image", true, "running", "", "running"},
+		{"stopped", false, "exited", "", "offline"},
+		{"dead", false, "dead", "", "error"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := observedContainerState(test.running, test.status, test.health); got != test.want {
+				t.Fatalf("observedContainerState() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestStatsWaitsForAnAccurateCPUSample(t *testing.T) {
 	var path string
 	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

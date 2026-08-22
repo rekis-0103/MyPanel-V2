@@ -164,19 +164,19 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		State struct {
 			Running bool   `json:"Running"`
 			Status  string `json:"Status"`
+			Health  *struct {
+				Status string `json:"Status"`
+			} `json:"Health"`
 		} `json:"State"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return State{}, err
 	}
-	state := "offline"
-	if response.State.Running {
-		state = "running"
-	} else if response.State.Status == "restarting" {
-		state = "starting"
-	} else if response.State.Status == "dead" {
-		state = "error"
+	health := ""
+	if response.State.Health != nil {
+		health = response.State.Health.Status
 	}
+	state := observedContainerState(response.State.Running, response.State.Status, health)
 	out := State{State: state}
 	if response.State.Running {
 		metrics, err := c.stats(ctx, id)
@@ -186,6 +186,22 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		}
 	}
 	return out, nil
+}
+
+func observedContainerState(running bool, status, health string) string {
+	if running {
+		if health != "" && health != "healthy" {
+			return "starting"
+		}
+		return "running"
+	}
+	if status == "restarting" {
+		return "starting"
+	}
+	if status == "dead" {
+		return "error"
+	}
+	return "offline"
 }
 
 func (c *Client) stats(ctx context.Context, id string) (State, error) {

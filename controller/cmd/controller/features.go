@@ -300,6 +300,7 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 	go a.pollConsoleLogs(ctx, serverID, logUpdates)
 	go a.pollConsoleState(ctx, serverID, statusUpdates)
 	session, _ := currentSession(r.Context())
+	currentState := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -309,6 +310,10 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 		case message := <-incoming:
 			if message.Type != "command" || subtle.ConstantTimeCompare([]byte(message.CSRFToken), []byte(session.CSRFToken)) != 1 || !validCommand(message.Command) {
 				_ = connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "command-result", "error": "command rejected"}))
+				continue
+			}
+			if !consoleCommandReady(currentState) {
+				_ = connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "command-result", "error": "server is still starting"}))
 				continue
 			}
 			output, err := a.agent.command(ctx, serverID, strings.TrimSpace(message.Command))
@@ -326,12 +331,15 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 				return
 			}
 		case state := <-statusUpdates:
+			currentState = state.State
 			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State, "metrics": state})) != nil {
 				return
 			}
 		}
 	}
 }
+
+func consoleCommandReady(state string) bool { return state == "running" }
 
 type consoleLogUpdate struct {
 	Logs  string

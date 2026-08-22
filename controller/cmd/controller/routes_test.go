@@ -64,3 +64,26 @@ func TestConsoleDeltaAppendsNewLinesWithoutRedrawing(t *testing.T) {
 		})
 	}
 }
+
+func TestLifecycleCompletionWaitsForReadiness(t *testing.T) {
+	if got := lifecycleCompletionState("start"); got != "starting" {
+		t.Fatalf("start completion state = %q", got)
+	}
+	if got := lifecycleCompletionState("restart"); got != "starting" {
+		t.Fatalf("restart completion state = %q", got)
+	}
+	if got := lifecycleCompletionState("stop"); got != "offline" {
+		t.Fatalf("stop completion state = %q", got)
+	}
+}
+
+func TestConsoleCommandRequiresRunningState(t *testing.T) {
+	for _, state := range []string{"", "offline", "starting", "stopping", "error"} {
+		if consoleCommandReady(state) {
+			t.Fatalf("command allowed while state is %q", state)
+		}
+	}
+	if !consoleCommandReady("running") {
+		t.Fatal("command rejected while server is running")
+	}
+}

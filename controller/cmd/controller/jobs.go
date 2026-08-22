@@ -60,11 +60,7 @@ func (a *app) executeJob(parent context.Context, item job) {
 	case "start", "stop", "restart":
 		err = a.agent.serverAction(ctx, item.ServerID, item.Action, spec, &result)
 		if err == nil {
-			state := "running"
-			if item.Action == "stop" {
-				state = "offline"
-			}
-			_ = a.store.setObservedState(ctx, item.ServerID, state, nil)
+			_ = a.store.setObservedState(ctx, item.ServerID, lifecycleCompletionState(item.Action), nil)
 		}
 	case "delete":
 		var payload struct {
@@ -88,6 +84,13 @@ func (a *app) executeJob(parent context.Context, item job) {
 	if finishErr := a.store.finishJob(finishCtx, item.ID, result, err); finishErr != nil {
 		log.Printf("finish job failed id=%s error=%v", item.ID, finishErr)
 	}
+}
+
+func lifecycleCompletionState(action string) string {
+	if action == "stop" {
+		return "offline"
+	}
+	return "starting"
 }
 
 func (a *app) runReconciler(ctx context.Context) {

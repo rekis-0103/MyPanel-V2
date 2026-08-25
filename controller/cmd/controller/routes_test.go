@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateServerConfig(t *testing.T) {
@@ -46,26 +47,6 @@ func TestJavaVersionAllowlist(t *testing.T) {
 		if javaVersionOK(value) {
 			t.Fatalf("Java %d should be rejected", value)
 		}
-	}
-}
-
-func TestConsoleDeltaAppendsNewLinesWithoutRedrawing(t *testing.T) {
-	previous := "first\nsecond\n"
-	for name, test := range map[string]struct {
-		current string
-		want    string
-		reset   bool
-	}{
-		"growing":  {"first\nsecond\nthird\nfourth\n", "third\nfourth\n", false},
-		"rotated":  {"second\nthird\nfourth\n", "third\nfourth\n", false},
-		"replaced": {"different\n", "different\n", true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			got, gotReset := consoleDelta(previous, test.current)
-			if got != test.want || gotReset != test.reset {
-				t.Fatalf("consoleDelta() = (%q, %v), want (%q, %v)", got, gotReset, test.want, test.reset)
-			}
-		})
 	}
 }
 
@@ -123,5 +104,51 @@ func TestConsoleCommandRequiresRunningState(t *testing.T) {
 	}
 	if !consoleCommandReady("running") {
 		t.Fatal("command rejected while server is running")
+	}
+}
+
+func TestLatestDockerLogTimestampTracksBurstCursor(t *testing.T) {
+	logs := "2026-08-25T08:46:46.100000000Z first\n" +
+		"2026-08-25T08:46:46.900000000Z second\n" +
+		"line without a Docker timestamp\n"
+	want, err := time.Parse(time.RFC3339Nano, "2026-08-25T08:46:46.900000000Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := latestDockerLogTimestamp(logs); !got.Equal(want) {
+		t.Fatalf("latest timestamp = %s, want %s", got, want)
+	}
+}
+
+func TestDockerLogsAfterFiltersRepeatedCursorSecond(t *testing.T) {
+	cursor, err := time.Parse(time.RFC3339Nano, "2026-08-25T08:46:46.500000000Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := "2026-08-25T08:46:46.100000000Z repeated\n" +
+		"2026-08-25T08:46:46.500000000Z cursor\n" +
+		"2026-08-25T08:46:46.500000001Z next in same second\n" +
+		"2026-08-25T08:46:47.000000000Z next second\n"
+	want := "2026-08-25T08:46:46.500000001Z next in same second\n" +
+		"2026-08-25T08:46:47.000000000Z next second\n"
+	if got := dockerLogsAfter(logs, cursor); got != want {
+		t.Fatalf("filtered logs = %q, want %q", got, want)
+	}
+}
+
+func TestMinecraftReadyLogRecognizesCompletedStartupLine(t *testing.T) {
+	ready := "2026-08-25T10:15:07.000000000Z [10:15:07 INFO]: Done (100.630s)! For help, type \"help\"\n"
+	if !minecraftReadyLog(ready) {
+		t.Fatal("current Paper ready marker was not recognized")
+	}
+	if minecraftReadyLog("[10:15:06 INFO]: Preparing spawn area: 99%\n") {
+		t.Fatal("startup progress was treated as ready")
+	}
+}
+
+func TestStripDockerLogTimestampsPreservesMinecraftOutput(t *testing.T) {
+	logs := "2026-08-25T08:46:46.100000000Z [08:46:46 INFO]: Done\nplain line\n"
+	if got, want := stripDockerLogTimestamps(logs), "[08:46:46 INFO]: Done\nplain line\n"; got != want {
+		t.Fatalf("visible logs = %q, want %q", got, want)
 	}
 }

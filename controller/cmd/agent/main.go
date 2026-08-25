@@ -1,17 +1,21 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"math"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,6 +60,8 @@ type apiError struct {
 
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._+\-]{0,31}$`)
 var errDiskLimit = errors.New("server disk limit exceeded")
+
+const managedConsolePipe = ".mypanel-console-in"
 
 func main() {
 	cfg := config{
@@ -173,11 +179,17 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			internal(w, err)
 			return
 		} else if action == "start" {
-			err = a.docker.Start(ctx, id)
+			if err = a.setServerCPU(ctx, id, true); err == nil {
+				err = a.docker.Start(ctx, id)
+			}
 		} else if action == "stop" {
 			err = a.docker.Stop(ctx, id)
 		} else {
-			err = a.docker.Restart(ctx, id)
+			if err = a.docker.Stop(ctx, id); err == nil {
+				if err = a.setServerCPU(ctx, id, true); err == nil {
+					err = a.docker.Start(ctx, id)
+				}
+			}
 		}
 		if err != nil {
 			internal(w, err)
@@ -216,14 +228,33 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			method(w)
 			return
 		}
-		state, err := a.docker.State(ctx, id)
+		includeMetrics := r.URL.Query().Get("metrics") != "false"
+		var state dockerapi.State
+		var err error
+		if includeMetrics {
+			state, err = a.docker.State(ctx, id)
+		} else {
+			state, err = a.docker.Readiness(ctx, id)
+		}
 		if err != nil {
 			internal(w, err)
 			return
 		}
-		disk, _ := directorySize(a.serverPath(id))
+		var disk int64
+		if includeMetrics {
+			disk, _ = directorySize(a.serverPath(id))
+		}
 		if spec, metadataErr := a.readMetadata(id); metadataErr == nil {
-			if disk > int64(spec.DiskMB)*1024*1024 {
+			if runtimeLimit := cpuNanoLimit(spec.CPU, false); state.State == "running" && state.NanoCPUs != runtimeLimit {
+				if err := a.docker.SetCPU(ctx, id, runtimeLimit); err != nil {
+					internal(w, err)
+					return
+				}
+			}
+			if includeMetrics {
+				state.CPUPercent = boundedCPUPercent(state.CPUPercent, spec.CPU)
+			}
+			if includeMetrics && disk > int64(spec.DiskMB)*1024*1024 {
 				_ = a.docker.Stop(ctx, id)
 				state.State = "error"
 				state.Reason = "server disk limit exceeded"
@@ -236,7 +267,47 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			method(w)
 			return
 		}
-		logs, err := a.docker.Logs(ctx, id)
+		since := strings.TrimSpace(r.URL.Query().Get("since"))
+		if since != "" {
+			if _, err := time.Parse(time.RFC3339Nano, since); err != nil {
+				write(w, http.StatusBadRequest, apiError{Error: "invalid log cursor", Code: "invalid_cursor"})
+				return
+			}
+		}
+		tail := 1000
+		if rawTail := r.URL.Query().Get("tail"); rawTail != "" {
+			value, err := strconv.Atoi(rawTail)
+			if err != nil || value < 0 || value > 2000 {
+				write(w, http.StatusBadRequest, apiError{Error: "invalid log tail", Code: "invalid_tail"})
+				return
+			}
+			tail = value
+		}
+		if r.URL.Query().Get("follow") == "true" {
+			stream, err := a.docker.FollowLogs(ctx, id, since)
+			if err != nil {
+				internal(w, err)
+				return
+			}
+			defer stream.Close()
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(http.StatusOK)
+			flusher, _ := w.(http.Flusher)
+			scanner := bufio.NewScanner(stream)
+			scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				if _, err := io.WriteString(w, scanner.Text()+"\n"); err != nil {
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			return
+		}
+		logs, err := a.docker.Logs(ctx, id, since, tail)
 		if err != nil {
 			internal(w, err)
 			return
@@ -258,7 +329,7 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			write(w, http.StatusBadRequest, apiError{Error: "invalid command", Code: "invalid_command"})
 			return
 		}
-		output, err := a.docker.Command(ctx, id, input.Command)
+		output, err := a.sendConsoleCommand(ctx, id, input.Command)
 		if err != nil {
 			internal(w, err)
 			return
@@ -267,6 +338,43 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 	default:
 		a.feature(w, r, id, parts[1:])
 	}
+}
+
+func (a *agent) sendConsoleCommand(ctx context.Context, id, command string) (string, error) {
+	err := writeConsolePipe(filepath.Join(a.serverPath(id), managedConsolePipe), command)
+	if errors.Is(err, os.ErrNotExist) {
+		// Existing containers created before the persistent pipe setting remain
+		// operable until their next configuration update recreates them.
+		return a.docker.Command(ctx, id, command)
+	}
+	return "", err
+}
+
+func (a *agent) setServerCPU(ctx context.Context, id string, starting bool) error {
+	spec, err := a.readMetadata(id)
+	if err != nil {
+		return err
+	}
+	return a.docker.SetCPU(ctx, id, cpuNanoLimit(spec.CPU, starting))
+}
+
+func cpuNanoLimit(cpu int, starting bool) int64 {
+	limit := int64(cpu) * 1_000_000_000
+	if starting {
+		return limit * 125 / 100
+	}
+	return limit
+}
+
+func boundedCPUPercent(value float64, cpu int) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || cpu <= 0 {
+		return 0
+	}
+	limit := float64(cpu * 100)
+	if value > limit {
+		return limit
+	}
+	return value
 }
 
 func validateSpec(pathID string, input serverSpec) error {

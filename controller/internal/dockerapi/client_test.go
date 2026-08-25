@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
@@ -28,6 +30,7 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	env := value["Env"].([]string)
 	foundHeap := false
 	foundPipe := false
+	foundPersistentPipe := false
 	foundTerminal := false
 	for _, item := range env {
 		if item == "MEMORY=1638M" {
@@ -36,11 +39,14 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 		if item == "CREATE_CONSOLE_IN_PIPE=true" {
 			foundPipe = true
 		}
+		if item == "CONSOLE_IN_NAMED_PIPE=/data/.mypanel-console-in" {
+			foundPersistentPipe = true
+		}
 		if item == "TERM=xterm-256color" {
 			foundTerminal = true
 		}
 	}
-	if !foundHeap || !foundPipe || !foundTerminal {
+	if !foundHeap || !foundPipe || !foundPersistentPipe || !foundTerminal {
 		t.Fatalf("required runtime environment missing: %v", env)
 	}
 	if value["OpenStdin"] != true {
@@ -140,6 +146,58 @@ func TestStatsWaitsForAnAccurateCPUSample(t *testing.T) {
 	}
 }
 
+func TestReadinessDoesNotWaitForDockerStats(t *testing.T) {
+	requests := 0
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if strings.Contains(request.URL.Path, "/stats") {
+			t.Fatal("readiness requested Docker stats")
+		}
+		body := `{"HostConfig":{"NanoCpus":2000000000},"State":{"Running":true,"Status":"running","Health":{"Status":"healthy"}}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+	state, err := client.Readiness(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != "running" || state.NanoCPUs != 2_000_000_000 || requests != 1 {
+		t.Fatalf("readiness = %#v after %d requests", state, requests)
+	}
+}
+
+func TestReadinessUsesCurrentBootReadyMarkerBeforeHealthInterval(t *testing.T) {
+	requests := 0
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if strings.HasSuffix(request.URL.Path, "/json") {
+			body := `{"State":{"Running":true,"Status":"running","StartedAt":"2026-08-25T09:42:00.000000000Z","Health":{"Status":"starting"}}}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		}
+		if strings.HasSuffix(request.URL.Path, "/logs") {
+			body := "2026-08-25T09:41:00.000000000Z [09:41:00 INFO]: Done (old)! For help, type \"help\"\n" +
+				"2026-08-25T09:46:52.374374426Z [09:46:52 INFO]: Done (143.338s)! For help, type \"help\"\n"
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		}
+		t.Fatalf("unexpected request path %q", request.URL.Path)
+		return nil, nil
+	})}}
+	state, err := client.Readiness(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != "running" || requests != 2 {
+		t.Fatalf("readiness = %#v after %d requests", state, requests)
+	}
+}
+
+func TestMinecraftReadyMarkerMustBelongToCurrentBoot(t *testing.T) {
+	startedAt, _ := time.Parse(time.RFC3339Nano, "2026-08-25T09:42:00Z")
+	logs := "2026-08-25T09:41:00Z [09:41:00 INFO]: Done (30s)! For help, type \"help\"\n"
+	if minecraftReadySince(logs, startedAt) {
+		t.Fatal("ready marker from a previous boot was accepted")
+	}
+}
+
 func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	var create map[string]any
 	requests := 0
@@ -162,21 +220,60 @@ func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	}
 }
 
-func TestLogsDoesNotAddDockerTimestamps(t *testing.T) {
+func TestLogsUsesTimestampCursorForIncrementalReads(t *testing.T) {
 	var path string
 	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		path = request.URL.RequestURI()
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("[06:59:03 INFO]: Done\n")), Header: make(http.Header)}, nil
 	})}}
-	logs, err := client.Logs(t.Context(), "server-id")
+	since := "2026-08-25T08:46:46.123456789Z"
+	logs, err := client.Logs(t.Context(), "server-id", since, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(path, "timestamps=0") {
+	cursor, _ := time.Parse(time.RFC3339Nano, since)
+	if !strings.Contains(path, "timestamps=1") || !strings.Contains(path, "since="+strconv.FormatInt(cursor.Unix(), 10)) || strings.Contains(path, "tail=") {
 		t.Fatalf("logs request path = %q", path)
 	}
 	if logs != "[06:59:03 INFO]: Done\n" {
 		t.Fatalf("logs = %q", logs)
+	}
+}
+
+func TestLogsRejectsInvalidTimestampCursor(t *testing.T) {
+	client := &Client{}
+	if _, err := client.Logs(t.Context(), "server-id", "not-a-timestamp", 0); err == nil {
+		t.Fatal("invalid timestamp cursor was accepted")
+	}
+}
+
+func TestFollowLogsUsesPersistentDockerStream(t *testing.T) {
+	var path string
+	client := &Client{http: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		path = request.URL.RequestURI()
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("live line\n")), Header: make(http.Header)}, nil
+	})}}
+	since := "2026-08-25T08:46:46.123456789Z"
+	stream, err := client.FollowLogs(t.Context(), "server-id", since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	data, err := io.ReadAll(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor, _ := time.Parse(time.RFC3339Nano, since)
+	for _, expected := range []string{"follow=1", "stdout=1", "stderr=1", "timestamps=1", "since=" + strconv.FormatInt(cursor.Unix(), 10)} {
+		if !strings.Contains(path, expected) {
+			t.Fatalf("follow path %q is missing %q", path, expected)
+		}
+	}
+	if strings.Contains(path, "tail=") {
+		t.Fatalf("follow path %q must replay any cursor gap", path)
+	}
+	if string(data) != "live line\n" {
+		t.Fatalf("stream data = %q", data)
 	}
 }
 
@@ -230,5 +327,23 @@ func TestRestartUsesDockerRestartEndpoint(t *testing.T) {
 	}
 	if method != http.MethodPost || path != "/containers/mypanel-abcd/restart?t=30" {
 		t.Fatalf("restart request = %s %s", method, path)
+	}
+}
+
+func TestSetCPUUsesDockerUpdateEndpoint(t *testing.T) {
+	var method, path string
+	var body map[string]int64
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		method, path = request.Method, request.URL.RequestURI()
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"Warnings":[]}`)), Header: make(http.Header)}, nil
+	})}}
+	if err := client.SetCPU(t.Context(), "ab-cd", 2_500_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodPost || path != "/containers/mypanel-abcd/update" || body["NanoCPUs"] != 2_500_000_000 {
+		t.Fatalf("CPU update = %s %s %#v", method, path, body)
 	}
 }

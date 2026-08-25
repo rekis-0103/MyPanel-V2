@@ -57,17 +57,67 @@ func (c *agentClient) serverAction(ctx context.Context, serverID, action string,
 }
 
 func (c *agentClient) state(ctx context.Context, serverID string) (agentState, error) {
+	return c.serverState(ctx, serverID, true)
+}
+
+func (c *agentClient) readiness(ctx context.Context, serverID string) (agentState, error) {
+	return c.serverState(ctx, serverID, false)
+}
+
+func (c *agentClient) serverState(ctx context.Context, serverID string, includeMetrics bool) (agentState, error) {
 	var out agentState
-	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/state", nil, &out)
+	query := url.Values{"metrics": {fmt.Sprint(includeMetrics)}}
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/state?"+query.Encode(), nil, &out)
 	return out, err
 }
 
-func (c *agentClient) logs(ctx context.Context, serverID string) (string, error) {
+func (c *agentClient) logs(ctx context.Context, serverID string, since time.Time, tail int) (string, error) {
 	var out struct {
 		Logs string `json:"logs"`
 	}
-	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/logs", nil, &out)
+	query := url.Values{"tail": {fmt.Sprint(tail)}}
+	if !since.IsZero() {
+		query.Set("since", since.UTC().Format(time.RFC3339Nano))
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/logs?"+query.Encode(), nil, &out)
 	return out.Logs, err
+}
+
+func (c *agentClient) followLogs(ctx context.Context, serverID string, since time.Time) (io.ReadCloser, error) {
+	query := url.Values{"follow": {"true"}}
+	if !since.IsZero() {
+		query.Set("since", since.UTC().Format(time.RFC3339Nano))
+	}
+	relative, err := url.Parse("/v1/servers/" + url.PathEscape(serverID) + "/logs?" + query.Encode())
+	if err != nil {
+		return nil, err
+	}
+	u := *c.baseURL
+	u.Path = path.Join(c.baseURL.Path, relative.Path)
+	u.RawQuery = relative.RawQuery
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	streamClient := *c.http
+	streamClient.Timeout = 0
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if readErr != nil {
+			return nil, readErr
+		}
+		var apiErr apiError
+		if json.Unmarshal(data, &apiErr) == nil && apiErr.Error != "" {
+			return nil, fmt.Errorf("agent: %s", apiErr.Error)
+		}
+		return nil, fmt.Errorf("agent returned HTTP %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }
 
 func (c *agentClient) command(ctx context.Context, serverID, command string) (string, error) {

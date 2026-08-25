@@ -150,10 +150,10 @@ func (a *app) recordConsoleEvent(ctx context.Context, serverID, message string) 
 func (a *app) waitForServerRunning(parent context.Context, serverID string) (agentState, error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
 	defer cancel()
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		state, err := a.agent.state(ctx, serverID)
+		state, err := a.agent.readiness(ctx, serverID)
 		if err != nil {
 			return agentState{}, fmt.Errorf("node unavailable while waiting for Minecraft readiness: %w", err)
 		}

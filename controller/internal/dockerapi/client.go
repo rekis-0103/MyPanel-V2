@@ -37,6 +37,7 @@ type State struct {
 	Reason      string  `json:"reason,omitempty"`
 	CPUPercent  float64 `json:"cpuPercent"`
 	MemoryBytes int64   `json:"memoryBytes"`
+	NanoCPUs    int64   `json:"-"`
 }
 
 type dockerStats struct {
@@ -139,6 +140,21 @@ func (c *Client) Restart(ctx context.Context, id string) error {
 	return nil
 }
 
+func (c *Client) SetCPU(ctx context.Context, id string, nanoCPUs int64) error {
+	body, err := json.Marshal(map[string]int64{"NanoCPUs": nanoCPUs})
+	if err != nil {
+		return err
+	}
+	status, response, err := c.request(ctx, http.MethodPost, "/containers/"+Name(id)+"/update", body)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return dockerError("update Minecraft CPU limit", status, response)
+	}
+	return nil
+}
+
 func (c *Client) Remove(ctx context.Context, id string) error {
 	status, body, err := c.request(ctx, http.MethodDelete, "/containers/"+Name(id)+"?force=1&v=0", nil)
 	if err != nil {
@@ -151,6 +167,23 @@ func (c *Client) Remove(ctx context.Context, id string) error {
 }
 
 func (c *Client) State(ctx context.Context, id string) (State, error) {
+	out, err := c.Readiness(ctx, id)
+	if err != nil {
+		return State{}, err
+	}
+	if out.State == "running" || out.State == "starting" {
+		metrics, metricsErr := c.stats(ctx, id)
+		if metricsErr == nil {
+			out.CPUPercent = metrics.CPUPercent
+			out.MemoryBytes = metrics.MemoryBytes
+		}
+	}
+	return out, nil
+}
+
+// Readiness inspects lifecycle and health without waiting for Docker's CPU
+// sampling endpoint. Callers that only need state transitions should use this.
+func (c *Client) Readiness(ctx context.Context, id string) (State, error) {
 	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/json", nil)
 	if err != nil {
 		return State{}, err
@@ -162,9 +195,13 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		return State{}, dockerError("inspect Minecraft container", status, body)
 	}
 	var response struct {
+		HostConfig struct {
+			NanoCPUs int64 `json:"NanoCpus"`
+		} `json:"HostConfig"`
 		State struct {
 			Running   bool   `json:"Running"`
 			Status    string `json:"Status"`
+			StartedAt string `json:"StartedAt"`
 			Error     string `json:"Error"`
 			ExitCode  int    `json:"ExitCode"`
 			OOMKilled bool   `json:"OOMKilled"`
@@ -181,15 +218,30 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		health = response.State.Health.Status
 	}
 	state := observedContainerState(response.State.Running, response.State.Status, health)
-	out := State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}
-	if response.State.Running {
-		metrics, err := c.stats(ctx, id)
-		if err == nil {
-			out.CPUPercent = metrics.CPUPercent
-			out.MemoryBytes = metrics.MemoryBytes
+	if state == "starting" {
+		startedAt, parseErr := time.Parse(time.RFC3339Nano, response.State.StartedAt)
+		if parseErr == nil {
+			logs, logsErr := c.Logs(ctx, id, "", 200)
+			if logsErr == nil && minecraftReadySince(logs, startedAt) {
+				state = "running"
+			}
 		}
 	}
-	return out, nil
+	return State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error), NanoCPUs: response.HostConfig.NanoCPUs}, nil
+}
+
+func minecraftReadySince(logs string, startedAt time.Time) bool {
+	for _, line := range strings.Split(logs, "\n") {
+		prefix, output, found := strings.Cut(line, " ")
+		if !found || !strings.Contains(output, "Done (") || !strings.Contains(output, "For help, type") {
+			continue
+		}
+		timestamp, err := time.Parse(time.RFC3339Nano, prefix)
+		if err == nil && !timestamp.Before(startedAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func containerFailureReason(running bool, status string, oomKilled bool, exitCode int, runtimeError string) string {
@@ -266,8 +318,22 @@ func calculateStats(response dockerStats) State {
 	return State{CPUPercent: percent, MemoryBytes: int64(memory)}
 }
 
-func (c *Client) Logs(ctx context.Context, id string) (string, error) {
-	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?stdout=1&stderr=1&tail=400&timestamps=0", nil)
+func (c *Client) Logs(ctx context.Context, id, since string, tail int) (string, error) {
+	query := url.Values{"stdout": {"1"}, "stderr": {"1"}, "timestamps": {"1"}}
+	if since != "" {
+		cursor, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil {
+			return "", fmt.Errorf("invalid log cursor: %w", err)
+		}
+		// The Engine API accepts Unix seconds here. Request the cursor's whole
+		// second and let the controller filter the nanosecond timestamps so a
+		// burst containing multiple lines in one second cannot be skipped.
+		query.Set("since", strconv.FormatInt(cursor.Unix(), 10))
+	}
+	if tail > 0 {
+		query.Set("tail", strconv.Itoa(tail))
+	}
+	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?"+query.Encode(), nil)
 	if err != nil {
 		return "", err
 	}
@@ -278,6 +344,46 @@ func (c *Client) Logs(ctx context.Context, id string) (string, error) {
 		return "", dockerError("read Minecraft logs", status, body)
 	}
 	return string(body), nil
+}
+
+// FollowLogs keeps one Docker Engine connection open and yields log bytes as
+// they are produced. The caller owns the returned body and must close it.
+func (c *Client) FollowLogs(ctx context.Context, id, since string) (io.ReadCloser, error) {
+	query := url.Values{"stdout": {"1"}, "stderr": {"1"}, "timestamps": {"1"}, "follow": {"1"}}
+	if since != "" {
+		cursor, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil {
+			return nil, fmt.Errorf("invalid log cursor: %w", err)
+		}
+		query.Set("since", strconv.FormatInt(cursor.Unix(), 10))
+	} else {
+		query.Set("tail", "0")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/containers/"+Name(id)+"/logs?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	// Streaming requests are intentionally governed by ctx instead of the
+	// regular client's finite timeout.
+	streamClient := *c.http
+	streamClient.Timeout = 0
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return io.NopCloser(strings.NewReader("")), nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, dockerError("follow Minecraft logs", resp.StatusCode, body)
+	}
+	return resp.Body, nil
 }
 
 func (c *Client) Command(ctx context.Context, id, command string) (string, error) {
@@ -348,6 +454,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 	environment := []string{
 		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
 		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
+		"CONSOLE_IN_NAMED_PIPE=/data/.mypanel-console-in",
 		"TERM=xterm-256color", "COLORTERM=truecolor",
 	}
 	configKeys := map[string]string{

@@ -128,10 +128,12 @@ angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
 kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
 Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
 vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
-cgroup, dan disk menghitung file di direktori data server. Console menghilangkan
-timestamp Docker tambahan, mempertahankan timestamp Minecraft, serta memberi
+cgroup, dan disk menghitung file di direktori data server. Console memakai
+timestamp Docker sebagai cursor internal, menghilangkannya dari tampilan,
+mempertahankan timestamp Minecraft, serta memberi
 warna berbeda pada level INFO/WARN/ERROR dan nama plugin. Setelah container
-dinyalakan, status tetap `starting` dan command console terkunci sampai health
+dinyalakan, status tetap `starting` dan command console terkunci sampai marker
+`Done (...)! For help, type ...` dari boot saat ini terdeteksi atau healthcheck
 Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
 terang dengan palette ANSI berkontras tinggi. Warna keluaran plugin didukung
 melalui ANSI SGR, kode Minecraft `§`, legacy `&`, RGB `&x&…`, serta tag
@@ -141,7 +143,17 @@ Event lifecycle control plane ditampilkan oranye di console, termasuk proses
 start/restart, status running/stopped, restart berhasil, dan alasan kegagalan
 yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
 200 event terbaru per server disimpan agar tetap tersedia setelah halaman
-console dimuat ulang.
+console dimuat ulang. Snapshot log dan lifecycle digabungkan berdasarkan waktu;
+setelah itu agent mempertahankan satu stream Docker dan meneruskan setiap baris
+baru tanpa polling atau buffer waktu di browser. xterm tetap memakai write queue
+ber-backpressure agar burst besar tidak membekukan halaman. Command diproses
+oleh antrean worker terpisah dan ditulis langsung ke named pipe persisten pada
+data server, sehingga tidak perlu membuat proses `docker exec` per command.
+Container lama tetap memakai fallback sampai konfigurasi berikutnya diterapkan.
+Nilai CPU runtime juga dibatasi pada kapasitas container (`jumlah vCPU × 100%`),
+sehingga server 2 vCPU ditampilkan dalam rentang 0–200%. Saat startup/restart,
+agent sementara memberi burst 25% (2 vCPU menjadi 2,5 core) dan otomatis
+mengembalikan hard limit segera setelah Minecraft siap.
 
 ## Update dari GitHub
 

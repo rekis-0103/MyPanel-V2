@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,15 @@ func TestSafePathRejectsTraversal(t *testing.T) {
 		if _, err := safePath(root, value, true); err == nil {
 			t.Fatalf("unsafe path %q was accepted", value)
 		}
+	}
+}
+
+func TestManagedConsolePipePathIsReserved(t *testing.T) {
+	if !reservedServerPath("./" + managedConsolePipe) {
+		t.Fatal("managed console pipe was exposed to file operations")
+	}
+	if reservedServerPath("plugins/example.jar") {
+		t.Fatal("ordinary server file was treated as reserved")
 	}
 }
 
@@ -80,5 +90,29 @@ func TestValidateSpecRejectsUnsupportedJava(t *testing.T) {
 	valid.JavaVersion = 24
 	if err := validateSpec(testServerID, valid); err == nil {
 		t.Fatal("unsupported Java version was accepted")
+	}
+}
+
+func TestBoundedCPUPercentUsesConfiguredVCPULimit(t *testing.T) {
+	if got := boundedCPUPercent(612.5, 2); got != 200 {
+		t.Fatalf("bounded CPU = %v, want 200", got)
+	}
+	if got := boundedCPUPercent(87.25, 2); got != 87.25 {
+		t.Fatalf("valid CPU = %v, want 87.25", got)
+	}
+	if got := boundedCPUPercent(-1, 2); got != 0 {
+		t.Fatalf("negative CPU = %v, want 0", got)
+	}
+	if got := boundedCPUPercent(math.NaN(), 2); got != 0 {
+		t.Fatalf("NaN CPU = %v, want 0", got)
+	}
+}
+
+func TestCPUNanoLimitAllowsOnlyStartupBurst(t *testing.T) {
+	if got := cpuNanoLimit(2, true); got != 2_500_000_000 {
+		t.Fatalf("startup CPU = %d, want 2500000000", got)
+	}
+	if got := cpuNanoLimit(2, false); got != 2_000_000_000 {
+		t.Fatalf("runtime CPU = %d, want 2000000000", got)
 	}
 }

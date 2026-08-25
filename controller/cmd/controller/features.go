@@ -317,6 +317,31 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 	go a.pollConsoleState(ctx, serverID, statusUpdates)
 	go a.pollConsoleEvents(ctx, serverID, eventCursor, eventUpdates)
 	session, _ := currentSession(r.Context())
+	remoteIP := clientIP(r)
+	commandQueue := make(chan incomingMessage, 16)
+	commandResults := make(chan map[string]any, 16)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case message := <-commandQueue:
+				command := strings.TrimSpace(message.Command)
+				output, err := a.agent.command(ctx, serverID, command)
+				result := map[string]any{"type": "command-result", "output": output}
+				if err != nil {
+					result["error"] = "node command failed"
+				}
+				commandName := strings.Fields(command)[0]
+				_ = a.store.audit(ctx, &session.UserID, "console.command", "server", serverID, remoteIP, map[string]any{"commandName": commandName, "length": len(command)})
+				select {
+				case commandResults <- result:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
 	currentState := ""
 	for {
 		select {
@@ -333,13 +358,12 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 				_ = connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "command-result", "error": "server is still starting"}))
 				continue
 			}
-			output, err := a.agent.command(ctx, serverID, strings.TrimSpace(message.Command))
-			result := map[string]any{"type": "command-result", "output": output}
-			if err != nil {
-				result["error"] = "node command failed"
+			select {
+			case commandQueue <- message:
+			default:
+				_ = connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "command-result", "error": "command queue is full"}))
 			}
-			commandName := strings.Fields(strings.TrimSpace(message.Command))[0]
-			_ = a.store.audit(ctx, &session.UserID, "console.command", "server", serverID, clientIP(r), map[string]any{"commandName": commandName, "length": len(message.Command)})
+		case result := <-commandResults:
 			if connection.Write(ctx, websocket.MessageText, mustJSON(result)) != nil {
 				return
 			}

@@ -146,7 +146,9 @@ yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
 console dimuat ulang. Snapshot log dan lifecycle digabungkan berdasarkan waktu;
 setelah itu agent mempertahankan satu stream Docker dan meneruskan setiap baris
 baru tanpa polling atau buffer waktu di browser. xterm tetap memakai write queue
-ber-backpressure agar burst besar tidak membekukan halaman. Nilai CPU juga
+ber-backpressure agar burst besar tidak membekukan halaman. Command diproses
+oleh antrean worker terpisah agar operasi Docker exec tidak menghentikan aliran
+log WebSocket. Nilai CPU juga
 dibatasi pada kapasitas container (`jumlah vCPU × 100%`), sehingga server 2 vCPU
 ditampilkan dalam rentang 0–200%.
 

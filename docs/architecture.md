@@ -93,7 +93,8 @@
 - Console commands use the image's named console pipe as UID/GID 1000 instead
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next
-  applied.
+  applied. A bounded, single-worker command queue keeps execution ordered while
+  the WebSocket loop continues forwarding live Docker output.
 - A running Docker process remains `starting` until the current container boot
   emits Paper's `Done (...)! For help, type ...` marker or its Minecraft
   healthcheck becomes healthy. Ready markers older than `State.StartedAt` are

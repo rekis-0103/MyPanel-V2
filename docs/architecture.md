@@ -42,8 +42,9 @@
   credential or session token is persisted there.
 - Console rendering uses xterm.js with an authenticated incremental WebSocket
   stream. Initial Docker logs and persisted lifecycle events are merged by
-  timestamp, while live events use a short ordering buffer and a backpressured
-  xterm write queue. Safe SGR and Minecraft color codes are rendered, while
+  timestamp. Live Docker output then crosses one persistent agent stream and is
+  written immediately, one message at a time, through a backpressured xterm
+  queue. Safe SGR and Minecraft color codes are rendered, while
   cursor/title control sequences are removed. Host-wide telemetry is
   intentionally presented as unavailable until the controller exposes an
   authoritative endpoint.
@@ -70,13 +71,15 @@
 - Total container memory is the user allocation. JVM maximum heap defaults to
   80% of that allocation to leave native-memory headroom.
 - Server CPU follows Docker's core-relative percentage: 100% represents one
-  fully used vCPU, so a two-vCPU server can reach 200%. Working RAM subtracts
+  fully used vCPU, so a two-vCPU server can reach 200%. Agent and browser both
+  bound transient sampling artifacts to the configured vCPU capacity. Working RAM subtracts
   `inactive_file` on cgroup v2 (falling back to `cache`), and disk usage includes
   regular files only within the managed server root.
 - Docker RFC3339Nano timestamps are retained internally as ordering cursors but
   removed before display because Minecraft already emits its own timestamp.
-  Incremental reads request only entries after the last cursor, avoiding
-  repeated tail snapshots and burst truncation. The browser applies safe
+  The initial snapshot is followed by one Docker `follow` stream from the last
+  cursor, avoiding repeated requests, burst truncation, and timer-based browser
+  batching. Reconnects replay from the cursor and discard duplicates. The browser applies safe
   semantic ANSI colors to
   Minecraft levels and plugin tags while preserving validated ANSI SGR colors
   and translating Minecraft `§`, plugin legacy `&`/`&x`, and supported
@@ -94,9 +97,9 @@
 - A running Docker process remains `starting` until the current container boot
   emits Paper's `Done (...)! For help, type ...` marker or its Minecraft
   healthcheck becomes healthy. Ready markers older than `State.StartedAt` are
-  ignored. State-only readiness checks skip Docker CPU sampling and run
-  independently from slower metric collection, avoiding Docker's healthcheck
-  interval delay. Start and restart jobs wait for that fast readiness path
+  ignored. The console stream recognizes the current ready line immediately;
+  state-only readiness checks skip Docker CPU sampling and run independently
+  from slower metric collection. Start and restart jobs wait for that readiness path
   before completing, and both the browser and WebSocket command boundary reject
   commands until the observed state is `running`.
 - Lifecycle messages are persisted in `server_console_events` and streamed as

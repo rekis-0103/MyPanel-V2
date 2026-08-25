@@ -59,14 +59,15 @@ menghapus direktori data.
 `{"type":"command","command":"say hi","csrfToken":"..."}` dan menerima event
 `history`, `log`, `status`, `lifecycle`, serta `command-result`. Event
 `history` adalah snapshot terurut yang menggabungkan log bertimestamp Docker
-dan lifecycle tersimpan saat koneksi dibuka. Event `log` berikutnya hanya
-membawa baris setelah cursor RFC3339Nano terakhir. Event `status` cepat dapat
+dan lifecycle tersimpan saat koneksi dibuka. Event `log` berikutnya diteruskan
+per baris dari stream Docker persisten setelah cursor RFC3339Nano terakhir,
+tanpa interval polling atau buffer waktu browser. Event `status` cepat dapat
 hanya membawa `state`; pembaruan periodik juga membawa objek `metrics` berisi
 `state`, `cpuPercent`, `memoryBytes`, `diskBytes`, dan `players`.
 `lifecycle` membawa pesan control-plane yang disanitasi dan dipertahankan
 sebanyak 200 event terbaru per server untuk replay setelah reload.
 `cpuPercent` memakai semantik Docker: 100 berarti satu vCPU terpakai penuh dan
-nilai maksimum praktis mengikuti jumlah vCPU server dikali 100.
+dibatasi pada jumlah vCPU server dikali 100.
 Sebelum marker ready Paper dari boot saat ini terdeteksi (atau health Minecraft
 menjadi `healthy`), event status membawa state `starting` dan command WebSocket
 ditolak dengan hasil `server is still starting`.

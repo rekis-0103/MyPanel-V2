@@ -144,8 +144,11 @@ start/restart, status running/stopped, restart berhasil, dan alasan kegagalan
 yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
 200 event terbaru per server disimpan agar tetap tersedia setelah halaman
 console dimuat ulang. Snapshot log dan lifecycle digabungkan berdasarkan waktu;
-setelah itu agent hanya mengambil log sesudah cursor terakhir dan xterm memakai
-write queue ber-backpressure agar burst log tidak menumpuk.
+setelah itu agent mempertahankan satu stream Docker dan meneruskan setiap baris
+baru tanpa polling atau buffer waktu di browser. xterm tetap memakai write queue
+ber-backpressure agar burst besar tidak membekukan halaman. Nilai CPU juga
+dibatasi pada kapasitas container (`jumlah vCPU × 100%`), sehingga server 2 vCPU
+ditampilkan dalam rentang 0–200%.
 
 ## Update dari GitHub
 

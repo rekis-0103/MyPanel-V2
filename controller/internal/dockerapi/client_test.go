@@ -161,6 +161,39 @@ func TestReadinessDoesNotWaitForDockerStats(t *testing.T) {
 	}
 }
 
+func TestReadinessUsesCurrentBootReadyMarkerBeforeHealthInterval(t *testing.T) {
+	requests := 0
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if strings.HasSuffix(request.URL.Path, "/json") {
+			body := `{"State":{"Running":true,"Status":"running","StartedAt":"2026-08-25T09:42:00.000000000Z","Health":{"Status":"starting"}}}`
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		}
+		if strings.HasSuffix(request.URL.Path, "/logs") {
+			body := "2026-08-25T09:41:00.000000000Z [09:41:00 INFO]: Done (old)! For help, type \"help\"\n" +
+				"2026-08-25T09:46:52.374374426Z [09:46:52 INFO]: Done (143.338s)! For help, type \"help\"\n"
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		}
+		t.Fatalf("unexpected request path %q", request.URL.Path)
+		return nil, nil
+	})}}
+	state, err := client.Readiness(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != "running" || requests != 2 {
+		t.Fatalf("readiness = %#v after %d requests", state, requests)
+	}
+}
+
+func TestMinecraftReadyMarkerMustBelongToCurrentBoot(t *testing.T) {
+	startedAt, _ := time.Parse(time.RFC3339Nano, "2026-08-25T09:42:00Z")
+	logs := "2026-08-25T09:41:00Z [09:41:00 INFO]: Done (30s)! For help, type \"help\"\n"
+	if minecraftReadySince(logs, startedAt) {
+		t.Fatal("ready marker from a previous boot was accepted")
+	}
+}
+
 func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	var create map[string]any
 	requests := 0

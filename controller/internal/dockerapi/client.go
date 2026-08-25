@@ -182,6 +182,7 @@ func (c *Client) Readiness(ctx context.Context, id string) (State, error) {
 		State struct {
 			Running   bool   `json:"Running"`
 			Status    string `json:"Status"`
+			StartedAt string `json:"StartedAt"`
 			Error     string `json:"Error"`
 			ExitCode  int    `json:"ExitCode"`
 			OOMKilled bool   `json:"OOMKilled"`
@@ -198,7 +199,30 @@ func (c *Client) Readiness(ctx context.Context, id string) (State, error) {
 		health = response.State.Health.Status
 	}
 	state := observedContainerState(response.State.Running, response.State.Status, health)
+	if state == "starting" {
+		startedAt, parseErr := time.Parse(time.RFC3339Nano, response.State.StartedAt)
+		if parseErr == nil {
+			logs, logsErr := c.Logs(ctx, id, "", 200)
+			if logsErr == nil && minecraftReadySince(logs, startedAt) {
+				state = "running"
+			}
+		}
+	}
 	return State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}, nil
+}
+
+func minecraftReadySince(logs string, startedAt time.Time) bool {
+	for _, line := range strings.Split(logs, "\n") {
+		prefix, output, found := strings.Cut(line, " ")
+		if !found || !strings.Contains(output, "Done (") || !strings.Contains(output, "For help, type") {
+			continue
+		}
+		timestamp, err := time.Parse(time.RFC3339Nano, prefix)
+		if err == nil && !timestamp.Before(startedAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func containerFailureReason(running bool, status string, oomKilled bool, exitCode int, runtimeError string) string {

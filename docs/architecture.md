@@ -91,11 +91,14 @@
   of opening one RCON connection per command. Runtime updates enable stdin and
   create that pipe; existing containers receive it when their config is next
   applied.
-- A running Docker process remains `starting` while its Minecraft healthcheck is
-  not healthy. State-only readiness checks skip Docker CPU sampling and run
-  independently from slower metric collection. Start and restart jobs wait for
-  that fast readiness path before completing, and both the browser and WebSocket
-  command boundary reject commands until the observed state is `running`.
+- A running Docker process remains `starting` until the current container boot
+  emits Paper's `Done (...)! For help, type ...` marker or its Minecraft
+  healthcheck becomes healthy. Ready markers older than `State.StartedAt` are
+  ignored. State-only readiness checks skip Docker CPU sampling and run
+  independently from slower metric collection, avoiding Docker's healthcheck
+  interval delay. Start and restart jobs wait for that fast readiness path
+  before completing, and both the browser and WebSocket command boundary reject
+  commands until the observed state is `running`.
 - Lifecycle messages are persisted in `server_console_events` and streamed as
   separate WebSocket events. The browser renders them orange, retains the 200
   latest events per server, and strips embedded terminal controls. Failure

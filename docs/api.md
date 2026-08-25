@@ -67,8 +67,9 @@ hanya membawa `state`; pembaruan periodik juga membawa objek `metrics` berisi
 sebanyak 200 event terbaru per server untuk replay setelah reload.
 `cpuPercent` memakai semantik Docker: 100 berarti satu vCPU terpakai penuh dan
 nilai maksimum praktis mengikuti jumlah vCPU server dikali 100.
-Selama health Minecraft belum `healthy`, event status membawa state `starting`
-dan command WebSocket ditolak dengan hasil `server is still starting`.
+Sebelum marker ready Paper dari boot saat ini terdeteksi (atau health Minecraft
+menjadi `healthy`), event status membawa state `starting` dan command WebSocket
+ditolak dengan hasil `server is still starting`.
 
 File dibatasi 10 MiB per operasi dan path absolut, traversal, serta symlink yang
 keluar dari root server ditolak agent. Pesan error node sengaja disanitasi pada

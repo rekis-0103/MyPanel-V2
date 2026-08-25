@@ -19,7 +19,8 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 - Riwayat console sekarang mengurutkan log Minecraft dan event MyPanel memakai
   timestamp yang sama, log burst dibaca dengan cursor tanpa tail-reset, dan
-  readiness tidak lagi menunggu pengambilan sampel CPU.
+  readiness tidak lagi menunggu pengambilan sampel CPU atau interval healthcheck
+  setelah marker ready Paper dari boot saat ini muncul.
 - Update yang gagal setelah fast-forward sekarang dicoba kembali sampai commit
   tersebut berhasil melewati readiness check.
 - Container Minecraft dapat menyiapkan ownership data dan berpindah ke user

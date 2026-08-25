@@ -41,9 +41,12 @@
   locale and last selected server ID are stored in browser local storage; no
   credential or session token is persisted there.
 - Console rendering uses xterm.js with an authenticated incremental WebSocket
-  stream. Safe SGR and Minecraft color codes are rendered, while cursor/title
-  control sequences are removed. Host-wide telemetry is intentionally presented as
-  unavailable until the controller exposes an authoritative endpoint.
+  stream. Initial Docker logs and persisted lifecycle events are merged by
+  timestamp, while live events use a short ordering buffer and a backpressured
+  xterm write queue. Safe SGR and Minecraft color codes are rendered, while
+  cursor/title control sequences are removed. Host-wide telemetry is
+  intentionally presented as unavailable until the controller exposes an
+  authoritative endpoint.
 
 ## Public contracts
 
@@ -52,8 +55,9 @@
   202. `GET /api/v1/jobs/{id}` exposes durable progress.
 - `Server.state` is the observed state. New fields include `desiredState`,
   `nodeId`, `diskMb`, `bindIp`, `currentJob`, and `lastError`.
-- `/api/v1/servers/{id}/console` is a WebSocket carrying `log`, `status`, and
-  `command-result` messages. Browser commands are sent as `command` messages.
+- `/api/v1/servers/{id}/console` is a WebSocket carrying `history`, `log`,
+  `status`, `lifecycle`, and `command-result` messages. Browser commands are
+  sent as `command` messages.
 - Agent routes are under `/v1/servers/{uuid}` and are not browser-accessible.
 
 ## Storage and lifecycle
@@ -69,8 +73,11 @@
   fully used vCPU, so a two-vCPU server can reach 200%. Working RAM subtracts
   `inactive_file` on cgroup v2 (falling back to `cache`), and disk usage includes
   regular files only within the managed server root.
-- Docker timestamps are disabled at the log source because Minecraft already
-  emits its own timestamp. The browser applies safe semantic ANSI colors to
+- Docker RFC3339Nano timestamps are retained internally as ordering cursors but
+  removed before display because Minecraft already emits its own timestamp.
+  Incremental reads request only entries after the last cursor, avoiding
+  repeated tail snapshots and burst truncation. The browser applies safe
+  semantic ANSI colors to
   Minecraft levels and plugin tags while preserving validated ANSI SGR colors
   and translating Minecraft `§`, plugin legacy `&`/`&x`, and supported
   MiniMessage color/decorations. Managed JVM defaults request Adventure
@@ -85,9 +92,10 @@
   create that pipe; existing containers receive it when their config is next
   applied.
 - A running Docker process remains `starting` while its Minecraft healthcheck is
-  not healthy. Start and restart jobs wait for readiness before completing, and
-  both the browser and WebSocket command boundary reject commands until the
-  observed state is `running`.
+  not healthy. State-only readiness checks skip Docker CPU sampling and run
+  independently from slower metric collection. Start and restart jobs wait for
+  that fast readiness path before completing, and both the browser and WebSocket
+  command boundary reject commands until the observed state is `running`.
 - Lifecycle messages are persisted in `server_console_events` and streamed as
   separate WebSocket events. The browser renders them orange, retains the 200
   latest events per server, and strips embedded terminal controls. Failure

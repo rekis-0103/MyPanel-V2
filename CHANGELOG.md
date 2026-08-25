@@ -17,6 +17,9 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 ### Fixed
 
+- Riwayat console sekarang mengurutkan log Minecraft dan event MyPanel memakai
+  timestamp yang sama, log burst dibaca dengan cursor tanpa tail-reset, dan
+  readiness tidak lagi menunggu pengambilan sampel CPU.
 - Update yang gagal setelah fast-forward sekarang dicoba kembali sampai commit
   tersebut berhasil melewati readiness check.
 - Container Minecraft dapat menyiapkan ownership data dan berpindah ke user

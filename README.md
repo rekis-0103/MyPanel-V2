@@ -128,8 +128,9 @@ angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
 kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
 Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
 vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
-cgroup, dan disk menghitung file di direktori data server. Console menghilangkan
-timestamp Docker tambahan, mempertahankan timestamp Minecraft, serta memberi
+cgroup, dan disk menghitung file di direktori data server. Console memakai
+timestamp Docker sebagai cursor internal, menghilangkannya dari tampilan,
+mempertahankan timestamp Minecraft, serta memberi
 warna berbeda pada level INFO/WARN/ERROR dan nama plugin. Setelah container
 dinyalakan, status tetap `starting` dan command console terkunci sampai health
 Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
@@ -141,7 +142,9 @@ Event lifecycle control plane ditampilkan oranye di console, termasuk proses
 start/restart, status running/stopped, restart berhasil, dan alasan kegagalan
 yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
 200 event terbaru per server disimpan agar tetap tersedia setelah halaman
-console dimuat ulang.
+console dimuat ulang. Snapshot log dan lifecycle digabungkan berdasarkan waktu;
+setelah itu agent hanya mengambil log sesudah cursor terakhir dan xterm memakai
+write queue ber-backpressure agar burst log tidak menumpuk.
 
 ## Update dari GitHub
 

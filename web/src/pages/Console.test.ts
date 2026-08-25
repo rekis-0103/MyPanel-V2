@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleText, renderConsoleUpdate, renderLifecycleMessage, sanitizeTerminalText } from './Console';
+import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleHistory, renderConsoleText, renderLifecycleMessage, sanitizeTerminalText } from './Console';
 
 describe('canSendConsoleCommand', () => {
   it('blocks commands until the server is fully running', () => {
@@ -91,7 +91,7 @@ describe('renderConsoleText', () => {
 describe('renderLifecycleMessage', () => {
   it('renders control-plane lifecycle events in orange', () => {
     expect(renderLifecycleMessage('Restart successful.'))
-      .toBe('\r\n\x1b[38;5;208m[MyPanel] Restart successful.\x1b[0m\r\n');
+      .toBe('\x1b[38;5;208m[MyPanel] Restart successful.\x1b[0m\r\n');
   });
 
   it('does not allow an event message to override the lifecycle color', () => {
@@ -99,10 +99,23 @@ describe('renderLifecycleMessage', () => {
     expect(renderLifecycleMessage('\x1b[31munsafe color\x1b[0m')).not.toContain('\x1b[31m');
   });
 
-  it('replays lifecycle history after a Docker log reset', () => {
-    const event = renderLifecycleMessage('Restarting server...');
-    const rendered = renderConsoleUpdate('[10:00:00 INFO]: booting\n', true, [event]);
-    expect(rendered).toContain('booting');
-    expect(rendered).toContain('[MyPanel] Restarting server...');
+  it('places lifecycle history between Docker log lines by timestamp', () => {
+    const logs = '2026-08-25T08:46:45.000000000Z [08:46:45 INFO]: Booting\n'
+      + '2026-08-25T08:46:47.000000000Z [08:46:47 INFO]: Done\n';
+    const rendered = renderConsoleHistory(logs, [
+      { message: 'Starting server...', createdAt: '2026-08-25T08:46:44.000000000Z' },
+      { message: 'Server marked as running.', createdAt: '2026-08-25T08:46:48.000000000Z' },
+    ]);
+    expect(rendered.indexOf('Starting server...')).toBeLessThan(rendered.indexOf('Booting'));
+    expect(rendered.indexOf('Booting')).toBeLessThan(rendered.indexOf('Done'));
+    expect(rendered.indexOf('Done')).toBeLessThan(rendered.indexOf('Server marked as running.'));
+  });
+
+  it('preserves a large same-second burst without reordering lines', () => {
+    const logs = Array.from({ length: 1000 }, (_, index) =>
+      `2026-08-25T08:46:46.${String(index).padStart(9, '0')}Z [08:46:46 INFO]: line-${String(index).padStart(4, '0')}`).join('\n') + '\n';
+    const rendered = renderConsoleHistory(logs, []);
+    expect(rendered.match(/line-/g)).toHaveLength(1000);
+    expect(rendered.indexOf('line-0000')).toBeLessThan(rendered.indexOf('line-0999'));
   });
 });

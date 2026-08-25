@@ -20,8 +20,9 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 - Live console memakai satu stream Docker persisten dan langsung merender tiap
   pesan tanpa polling 100 ms atau buffer browser 120 ms; antrean xterm tetap
   memberi backpressure saat burst besar. Command berjalan pada worker terpisah
-  agar Docker exec tidak memblokir log. Sampel CPU dibatasi pada kapasitas vCPU
-  container, dan pengecekan startup yang duplikatif dikurangi.
+  dan masuk melalui named pipe bind-mounted tanpa membuat Docker exec baru;
+  pipe internal dilindungi dari file manager. Sampel CPU dibatasi pada kapasitas
+  vCPU container, dan pengecekan startup yang duplikatif dikurangi.
 - Riwayat console sekarang mengurutkan log Minecraft dan event MyPanel memakai
   timestamp yang sama, log burst dibaca dengan cursor tanpa tail-reset, dan
   readiness tidak lagi menunggu pengambilan sampel CPU atau interval healthcheck

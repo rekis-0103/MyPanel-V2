@@ -150,7 +150,7 @@ func (a *app) recordConsoleEvent(ctx context.Context, serverID, message string) 
 func (a *app) waitForServerRunning(parent context.Context, serverID string) (agentState, error) {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
 	defer cancel()
-	ticker := time.NewTicker(200 * time.Millisecond)
+	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		state, err := a.agent.readiness(ctx, serverID)

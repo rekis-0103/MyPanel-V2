@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -311,11 +312,9 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 	}()
 	logUpdates := make(chan consoleLogUpdate, 64)
 	statusUpdates := make(chan agentState, 1)
-	readinessUpdates := make(chan agentState, 1)
 	eventUpdates := make(chan consoleEvent, 32)
-	go a.pollConsoleLogs(ctx, serverID, logCursor, logUpdates)
+	go a.streamConsoleLogs(ctx, serverID, logCursor, logUpdates)
 	go a.pollConsoleState(ctx, serverID, statusUpdates)
-	go a.pollConsoleReadiness(ctx, serverID, readinessUpdates)
 	go a.pollConsoleEvents(ctx, serverID, eventCursor, eventUpdates)
 	session, _ := currentSession(r.Context())
 	currentState := ""
@@ -348,13 +347,15 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "log", "logs": update.Logs})) != nil {
 				return
 			}
-		case state := <-statusUpdates:
-			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "metrics": state})) != nil {
-				return
+			if update.Ready && currentState != "running" {
+				currentState = "running"
+				if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": "running"})) != nil {
+					return
+				}
 			}
-		case state := <-readinessUpdates:
+		case state := <-statusUpdates:
 			currentState = state.State
-			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State})) != nil {
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State, "metrics": state})) != nil {
 				return
 			}
 		case event := <-eventUpdates:
@@ -391,55 +392,44 @@ func (a *app) pollConsoleEvents(ctx context.Context, serverID string, afterID in
 func consoleCommandReady(state string) bool { return state == "running" }
 
 type consoleLogUpdate struct {
-	Logs string
+	Logs  string
+	Ready bool
 }
 
-func (a *app) pollConsoleLogs(ctx context.Context, serverID string, cursor time.Time, updates chan<- consoleLogUpdate) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+func (a *app) streamConsoleLogs(ctx context.Context, serverID string, cursor time.Time, updates chan<- consoleLogUpdate) {
 	for {
-		logs, err := a.agent.logs(ctx, serverID, cursor, 0)
-		if err == nil && logs != "" {
-			logs = dockerLogsAfter(logs, cursor)
-			if latest := latestDockerLogTimestamp(logs); latest.After(cursor) {
-				cursor = latest
-			}
-			if logs != "" {
+		stream, err := a.agent.followLogs(ctx, serverID, cursor)
+		if err == nil {
+			scanner := bufio.NewScanner(stream)
+			scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				line := scanner.Text() + "\n"
+				filtered := dockerLogsAfter(line, cursor)
+				if filtered == "" {
+					continue
+				}
+				if latest := latestDockerLogTimestamp(filtered); latest.After(cursor) {
+					cursor = latest
+				}
 				select {
-				case updates <- consoleLogUpdate{Logs: logs}:
+				case updates <- consoleLogUpdate{Logs: filtered, Ready: minecraftReadyLog(filtered)}:
 				case <-ctx.Done():
+					stream.Close()
 					return
 				}
 			}
+			stream.Close()
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-time.After(500 * time.Millisecond):
 		}
 	}
 }
 
-func (a *app) pollConsoleReadiness(ctx context.Context, serverID string, updates chan<- agentState) {
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	lastState := ""
-	for {
-		state, err := a.agent.readiness(ctx, serverID)
-		if err == nil && state.State != lastState {
-			lastState = state.State
-			select {
-			case updates <- state:
-			case <-ctx.Done():
-				return
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
+func minecraftReadyLog(logs string) bool {
+	return strings.Contains(logs, "Done (") && strings.Contains(logs, "For help, type")
 }
 
 func (a *app) pollConsoleState(ctx context.Context, serverID string, updates chan<- agentState) {

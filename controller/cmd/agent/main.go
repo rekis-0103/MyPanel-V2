@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
+	"math"
 	"mime"
 	"net/http"
 	"os"
@@ -234,6 +236,7 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			disk, _ = directorySize(a.serverPath(id))
 		}
 		if spec, metadataErr := a.readMetadata(id); metadataErr == nil && includeMetrics {
+			state.CPUPercent = boundedCPUPercent(state.CPUPercent, spec.CPU)
 			if disk > int64(spec.DiskMB)*1024*1024 {
 				_ = a.docker.Stop(ctx, id)
 				state.State = "error"
@@ -262,6 +265,30 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			tail = value
+		}
+		if r.URL.Query().Get("follow") == "true" {
+			stream, err := a.docker.FollowLogs(ctx, id, since)
+			if err != nil {
+				internal(w, err)
+				return
+			}
+			defer stream.Close()
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(http.StatusOK)
+			flusher, _ := w.(http.Flusher)
+			scanner := bufio.NewScanner(stream)
+			scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+			for scanner.Scan() {
+				if _, err := io.WriteString(w, scanner.Text()+"\n"); err != nil {
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+			return
 		}
 		logs, err := a.docker.Logs(ctx, id, since, tail)
 		if err != nil {
@@ -294,6 +321,17 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 	default:
 		a.feature(w, r, id, parts[1:])
 	}
+}
+
+func boundedCPUPercent(value float64, cpu int) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || cpu <= 0 {
+		return 0
+	}
+	limit := float64(cpu * 100)
+	if value > limit {
+		return limit
+	}
+	return value
 }
 
 func validateSpec(pathID string, input serverSpec) error {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -80,5 +81,20 @@ func TestValidateSpecRejectsUnsupportedJava(t *testing.T) {
 	valid.JavaVersion = 24
 	if err := validateSpec(testServerID, valid); err == nil {
 		t.Fatal("unsupported Java version was accepted")
+	}
+}
+
+func TestBoundedCPUPercentUsesConfiguredVCPULimit(t *testing.T) {
+	if got := boundedCPUPercent(612.5, 2); got != 200 {
+		t.Fatalf("bounded CPU = %v, want 200", got)
+	}
+	if got := boundedCPUPercent(87.25, 2); got != 87.25 {
+		t.Fatalf("valid CPU = %v, want 87.25", got)
+	}
+	if got := boundedCPUPercent(-1, 2); got != 0 {
+		t.Fatalf("negative CPU = %v, want 0", got)
+	}
+	if got := boundedCPUPercent(math.NaN(), 2); got != 0 {
+		t.Fatalf("NaN CPU = %v, want 0", got)
 	}
 }

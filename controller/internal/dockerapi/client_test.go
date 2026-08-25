@@ -243,6 +243,36 @@ func TestLogsRejectsInvalidTimestampCursor(t *testing.T) {
 	}
 }
 
+func TestFollowLogsUsesPersistentDockerStream(t *testing.T) {
+	var path string
+	client := &Client{http: &http.Client{Timeout: time.Second, Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		path = request.URL.RequestURI()
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("live line\n")), Header: make(http.Header)}, nil
+	})}}
+	since := "2026-08-25T08:46:46.123456789Z"
+	stream, err := client.FollowLogs(t.Context(), "server-id", since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	data, err := io.ReadAll(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cursor, _ := time.Parse(time.RFC3339Nano, since)
+	for _, expected := range []string{"follow=1", "stdout=1", "stderr=1", "timestamps=1", "since=" + strconv.FormatInt(cursor.Unix(), 10)} {
+		if !strings.Contains(path, expected) {
+			t.Fatalf("follow path %q is missing %q", path, expected)
+		}
+	}
+	if strings.Contains(path, "tail=") {
+		t.Fatalf("follow path %q must replay any cursor gap", path)
+	}
+	if string(data) != "live line\n" {
+		t.Fatalf("stream data = %q", data)
+	}
+}
+
 func TestContainerSpecUsesSelectedJavaImage(t *testing.T) {
 	spec := Spec{ID: "2d86389b-f055-4b80-9d8b-daeb83f5fa15", Runtime: "paper", Version: "1.21.11", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, BindIP: "0.0.0.0", Port: 25565, DataPath: "/data", Config: map[string]any{}}
 	value := ContainerSpec(spec.Image, spec)

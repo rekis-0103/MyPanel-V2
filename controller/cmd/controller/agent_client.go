@@ -83,6 +83,43 @@ func (c *agentClient) logs(ctx context.Context, serverID string, since time.Time
 	return out.Logs, err
 }
 
+func (c *agentClient) followLogs(ctx context.Context, serverID string, since time.Time) (io.ReadCloser, error) {
+	query := url.Values{"follow": {"true"}}
+	if !since.IsZero() {
+		query.Set("since", since.UTC().Format(time.RFC3339Nano))
+	}
+	relative, err := url.Parse("/v1/servers/" + url.PathEscape(serverID) + "/logs?" + query.Encode())
+	if err != nil {
+		return nil, err
+	}
+	u := *c.baseURL
+	u.Path = path.Join(c.baseURL.Path, relative.Path)
+	u.RawQuery = relative.RawQuery
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	streamClient := *c.http
+	streamClient.Timeout = 0
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		defer resp.Body.Close()
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if readErr != nil {
+			return nil, readErr
+		}
+		var apiErr apiError
+		if json.Unmarshal(data, &apiErr) == nil && apiErr.Error != "" {
+			return nil, fmt.Errorf("agent: %s", apiErr.Error)
+		}
+		return nil, fmt.Errorf("agent returned HTTP %d", resp.StatusCode)
+	}
+	return resp.Body, nil
+}
+
 func (c *agentClient) command(ctx context.Context, serverID, command string) (string, error) {
 	var out struct {
 		Output string `json:"output"`

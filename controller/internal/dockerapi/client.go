@@ -327,6 +327,46 @@ func (c *Client) Logs(ctx context.Context, id, since string, tail int) (string, 
 	return string(body), nil
 }
 
+// FollowLogs keeps one Docker Engine connection open and yields log bytes as
+// they are produced. The caller owns the returned body and must close it.
+func (c *Client) FollowLogs(ctx context.Context, id, since string) (io.ReadCloser, error) {
+	query := url.Values{"stdout": {"1"}, "stderr": {"1"}, "timestamps": {"1"}, "follow": {"1"}}
+	if since != "" {
+		cursor, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil {
+			return nil, fmt.Errorf("invalid log cursor: %w", err)
+		}
+		query.Set("since", strconv.FormatInt(cursor.Unix(), 10))
+	} else {
+		query.Set("tail", "0")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/containers/"+Name(id)+"/logs?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	// Streaming requests are intentionally governed by ctx instead of the
+	// regular client's finite timeout.
+	streamClient := *c.http
+	streamClient.Timeout = 0
+	resp, err := streamClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return io.NopCloser(strings.NewReader("")), nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if readErr != nil {
+			return nil, readErr
+		}
+		return nil, dockerError("follow Minecraft logs", resp.StatusCode, body)
+	}
+	return resp.Body, nil
+}
+
 func (c *Client) Command(ctx context.Context, id, command string) (string, error) {
 	createBody, _ := json.Marshal(map[string]any{"AttachStdout": true, "AttachStderr": true, "Tty": true, "User": "1000:1000", "Cmd": []string{"mc-send-to-console", command}})
 	status, body, err := c.request(ctx, http.MethodPost, "/containers/"+Name(id)+"/exec", createBody)

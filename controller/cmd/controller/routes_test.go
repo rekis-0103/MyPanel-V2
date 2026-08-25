@@ -136,6 +136,16 @@ func TestDockerLogsAfterFiltersRepeatedCursorSecond(t *testing.T) {
 	}
 }
 
+func TestMinecraftReadyLogRecognizesCompletedStartupLine(t *testing.T) {
+	ready := "2026-08-25T10:15:07.000000000Z [10:15:07 INFO]: Done (100.630s)! For help, type \"help\"\n"
+	if !minecraftReadyLog(ready) {
+		t.Fatal("current Paper ready marker was not recognized")
+	}
+	if minecraftReadyLog("[10:15:06 INFO]: Preparing spawn area: 99%\n") {
+		t.Fatal("startup progress was treated as ready")
+	}
+}
+
 func TestStripDockerLogTimestampsPreservesMinecraftOutput(t *testing.T) {
 	logs := "2026-08-25T08:46:46.100000000Z [08:46:46 INFO]: Done\nplain line\n"
 	if got, want := stripDockerLogTimestamps(logs), "[08:46:46 INFO]: Done\nplain line\n"; got != want {

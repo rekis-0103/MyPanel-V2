@@ -151,6 +151,23 @@ func (c *Client) Remove(ctx context.Context, id string) error {
 }
 
 func (c *Client) State(ctx context.Context, id string) (State, error) {
+	out, err := c.Readiness(ctx, id)
+	if err != nil {
+		return State{}, err
+	}
+	if out.State == "running" || out.State == "starting" {
+		metrics, metricsErr := c.stats(ctx, id)
+		if metricsErr == nil {
+			out.CPUPercent = metrics.CPUPercent
+			out.MemoryBytes = metrics.MemoryBytes
+		}
+	}
+	return out, nil
+}
+
+// Readiness inspects lifecycle and health without waiting for Docker's CPU
+// sampling endpoint. Callers that only need state transitions should use this.
+func (c *Client) Readiness(ctx context.Context, id string) (State, error) {
 	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/json", nil)
 	if err != nil {
 		return State{}, err
@@ -181,15 +198,7 @@ func (c *Client) State(ctx context.Context, id string) (State, error) {
 		health = response.State.Health.Status
 	}
 	state := observedContainerState(response.State.Running, response.State.Status, health)
-	out := State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}
-	if response.State.Running {
-		metrics, err := c.stats(ctx, id)
-		if err == nil {
-			out.CPUPercent = metrics.CPUPercent
-			out.MemoryBytes = metrics.MemoryBytes
-		}
-	}
-	return out, nil
+	return State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}, nil
 }
 
 func containerFailureReason(running bool, status string, oomKilled bool, exitCode int, runtimeError string) string {
@@ -266,8 +275,15 @@ func calculateStats(response dockerStats) State {
 	return State{CPUPercent: percent, MemoryBytes: int64(memory)}
 }
 
-func (c *Client) Logs(ctx context.Context, id string) (string, error) {
-	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?stdout=1&stderr=1&tail=400&timestamps=0", nil)
+func (c *Client) Logs(ctx context.Context, id, since string, tail int) (string, error) {
+	query := url.Values{"stdout": {"1"}, "stderr": {"1"}, "timestamps": {"1"}}
+	if since != "" {
+		query.Set("since", since)
+	}
+	if tail > 0 {
+		query.Set("tail", strconv.Itoa(tail))
+	}
+	status, body, err := c.request(ctx, http.MethodGet, "/containers/"+Name(id)+"/logs?"+query.Encode(), nil)
 	if err != nil {
 		return "", err
 	}

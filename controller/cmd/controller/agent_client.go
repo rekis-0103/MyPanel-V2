@@ -57,16 +57,29 @@ func (c *agentClient) serverAction(ctx context.Context, serverID, action string,
 }
 
 func (c *agentClient) state(ctx context.Context, serverID string) (agentState, error) {
+	return c.serverState(ctx, serverID, true)
+}
+
+func (c *agentClient) readiness(ctx context.Context, serverID string) (agentState, error) {
+	return c.serverState(ctx, serverID, false)
+}
+
+func (c *agentClient) serverState(ctx context.Context, serverID string, includeMetrics bool) (agentState, error) {
 	var out agentState
-	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/state", nil, &out)
+	query := url.Values{"metrics": {fmt.Sprint(includeMetrics)}}
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/state?"+query.Encode(), nil, &out)
 	return out, err
 }
 
-func (c *agentClient) logs(ctx context.Context, serverID string) (string, error) {
+func (c *agentClient) logs(ctx context.Context, serverID string, since time.Time, tail int) (string, error) {
 	var out struct {
 		Logs string `json:"logs"`
 	}
-	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/logs", nil, &out)
+	query := url.Values{"tail": {fmt.Sprint(tail)}}
+	if !since.IsZero() {
+		query.Set("since", since.UTC().Format(time.RFC3339Nano))
+	}
+	err := c.do(ctx, http.MethodGet, "/v1/servers/"+url.PathEscape(serverID)+"/logs?"+query.Encode(), nil, &out)
 	return out.Logs, err
 }
 

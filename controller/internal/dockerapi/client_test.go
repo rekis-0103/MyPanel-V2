@@ -140,6 +140,25 @@ func TestStatsWaitsForAnAccurateCPUSample(t *testing.T) {
 	}
 }
 
+func TestReadinessDoesNotWaitForDockerStats(t *testing.T) {
+	requests := 0
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if strings.Contains(request.URL.Path, "/stats") {
+			t.Fatal("readiness requested Docker stats")
+		}
+		body := `{"State":{"Running":true,"Status":"running","Health":{"Status":"healthy"}}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}}
+	state, err := client.Readiness(t.Context(), "server-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != "running" || requests != 1 {
+		t.Fatalf("readiness = %#v after %d requests", state, requests)
+	}
+}
+
 func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	var create map[string]any
 	requests := 0
@@ -162,17 +181,18 @@ func TestCommandUsesConsolePipeWithoutRCON(t *testing.T) {
 	}
 }
 
-func TestLogsDoesNotAddDockerTimestamps(t *testing.T) {
+func TestLogsUsesTimestampCursorForIncrementalReads(t *testing.T) {
 	var path string
 	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		path = request.URL.RequestURI()
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("[06:59:03 INFO]: Done\n")), Header: make(http.Header)}, nil
 	})}}
-	logs, err := client.Logs(t.Context(), "server-id")
+	since := "2026-08-25T08:46:46.123456789Z"
+	logs, err := client.Logs(t.Context(), "server-id", since, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(path, "timestamps=0") {
+	if !strings.Contains(path, "timestamps=1") || !strings.Contains(path, "since=2026-08-25T08%3A46%3A46.123456789Z") || strings.Contains(path, "tail=") {
 		t.Fatalf("logs request path = %q", path)
 	}
 	if logs != "[06:59:03 INFO]: Done\n" {

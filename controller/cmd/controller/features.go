@@ -34,12 +34,12 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 			method(w)
 			return
 		}
-		logs, err := a.agent.logs(r.Context(), serverID)
+		logs, err := a.agent.logs(r.Context(), serverID, time.Time{}, 1000)
 		if err != nil {
 			write(w, http.StatusBadGateway, apiError{Error: "node console unavailable", Code: "node_unavailable", RequestID: requestID(r.Context())})
 			return
 		}
-		write(w, http.StatusOK, map[string]string{"logs": logs})
+		write(w, http.StatusOK, map[string]string{"logs": stripDockerLogTimestamps(logs)})
 	case "metrics":
 		if r.Method != http.MethodGet {
 			method(w)
@@ -280,6 +280,20 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 		Command   string `json:"command"`
 		CSRFToken string `json:"csrfToken"`
 	}
+	historyStartedAt := time.Now().UTC()
+	initialLogs, _ := a.agent.logs(ctx, serverID, time.Time{}, 1000)
+	initialEvents, _ := a.store.consoleEvents(ctx, serverID, 0, consoleEventRetention)
+	logCursor := latestDockerLogTimestamp(initialLogs)
+	if logCursor.IsZero() {
+		logCursor = historyStartedAt
+	}
+	var eventCursor int64
+	if len(initialEvents) > 0 {
+		eventCursor = initialEvents[len(initialEvents)-1].ID
+	}
+	if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "history", "logs": initialLogs, "lifecycle": initialEvents})) != nil {
+		return
+	}
 	incoming := make(chan incomingMessage)
 	readErrors := make(chan error, 1)
 	go func() {
@@ -295,12 +309,14 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 			}
 		}
 	}()
-	logUpdates := make(chan consoleLogUpdate, 8)
+	logUpdates := make(chan consoleLogUpdate, 64)
 	statusUpdates := make(chan agentState, 1)
-	eventUpdates := make(chan consoleEvent, 8)
-	go a.pollConsoleLogs(ctx, serverID, logUpdates)
+	readinessUpdates := make(chan agentState, 1)
+	eventUpdates := make(chan consoleEvent, 32)
+	go a.pollConsoleLogs(ctx, serverID, logCursor, logUpdates)
 	go a.pollConsoleState(ctx, serverID, statusUpdates)
-	go a.pollConsoleEvents(ctx, serverID, eventUpdates)
+	go a.pollConsoleReadiness(ctx, serverID, readinessUpdates)
+	go a.pollConsoleEvents(ctx, serverID, eventCursor, eventUpdates)
 	session, _ := currentSession(r.Context())
 	currentState := ""
 	for {
@@ -329,12 +345,16 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 				return
 			}
 		case update := <-logUpdates:
-			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "log", "logs": update.Logs, "reset": update.Reset})) != nil {
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "log", "logs": update.Logs})) != nil {
 				return
 			}
 		case state := <-statusUpdates:
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "metrics": state})) != nil {
+				return
+			}
+		case state := <-readinessUpdates:
 			currentState = state.State
-			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State, "metrics": state})) != nil {
+			if connection.Write(ctx, websocket.MessageText, mustJSON(map[string]any{"type": "status", "state": state.State})) != nil {
 				return
 			}
 		case event := <-eventUpdates:
@@ -345,17 +365,9 @@ func (a *app) console(w http.ResponseWriter, r *http.Request, serverID string) {
 	}
 }
 
-func (a *app) pollConsoleEvents(ctx context.Context, serverID string, updates chan<- consoleEvent) {
-	initialDelay := time.NewTimer(time.Second)
-	defer initialDelay.Stop()
-	select {
-	case <-ctx.Done():
-		return
-	case <-initialDelay.C:
-	}
-	ticker := time.NewTicker(500 * time.Millisecond)
+func (a *app) pollConsoleEvents(ctx context.Context, serverID string, afterID int64, updates chan<- consoleEvent) {
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-	var afterID int64
 	for {
 		items, err := a.store.consoleEvents(ctx, serverID, afterID, consoleEventRetention)
 		if err == nil {
@@ -379,25 +391,44 @@ func (a *app) pollConsoleEvents(ctx context.Context, serverID string, updates ch
 func consoleCommandReady(state string) bool { return state == "running" }
 
 type consoleLogUpdate struct {
-	Logs  string
-	Reset bool
+	Logs string
 }
 
-func (a *app) pollConsoleLogs(ctx context.Context, serverID string, updates chan<- consoleLogUpdate) {
-	ticker := time.NewTicker(250 * time.Millisecond)
+func (a *app) pollConsoleLogs(ctx context.Context, serverID string, cursor time.Time, updates chan<- consoleLogUpdate) {
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
-	previous := ""
 	for {
-		logs, err := a.agent.logs(ctx, serverID)
-		if err == nil && logs != previous {
-			delta, reset := consoleDelta(previous, logs)
-			previous = logs
-			if delta != "" {
-				select {
-				case updates <- consoleLogUpdate{Logs: delta, Reset: reset}:
-				case <-ctx.Done():
-					return
-				}
+		logs, err := a.agent.logs(ctx, serverID, cursor, 0)
+		if err == nil && logs != "" {
+			if latest := latestDockerLogTimestamp(logs); latest.After(cursor) {
+				cursor = latest
+			}
+			select {
+			case updates <- consoleLogUpdate{Logs: logs}:
+			case <-ctx.Done():
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (a *app) pollConsoleReadiness(ctx context.Context, serverID string, updates chan<- agentState) {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	lastState := ""
+	for {
+		state, err := a.agent.readiness(ctx, serverID)
+		if err == nil && state.State != lastState {
+			lastState = state.State
+			select {
+			case updates <- state:
+			case <-ctx.Done():
+				return
 			}
 		}
 		select {
@@ -428,34 +459,33 @@ func (a *app) pollConsoleState(ctx context.Context, serverID string, updates cha
 	}
 }
 
-func consoleDelta(previous, current string) (string, bool) {
-	if previous == "" {
-		return current, true
-	}
-	if strings.HasPrefix(current, previous) {
-		return current[len(previous):], false
-	}
-	previousLines := strings.SplitAfter(previous, "\n")
-	currentLines := strings.SplitAfter(current, "\n")
-	if previousLines[len(previousLines)-1] == "" {
-		previousLines = previousLines[:len(previousLines)-1]
-	}
-	if currentLines[len(currentLines)-1] == "" {
-		currentLines = currentLines[:len(currentLines)-1]
-	}
-	for overlap := min(len(previousLines), len(currentLines)); overlap > 0; overlap-- {
-		matched := true
-		for index := 0; index < overlap; index++ {
-			if previousLines[len(previousLines)-overlap+index] != currentLines[index] {
-				matched = false
-				break
-			}
+func latestDockerLogTimestamp(logs string) time.Time {
+	var latest time.Time
+	for _, line := range strings.Split(logs, "\n") {
+		prefix, _, found := strings.Cut(line, " ")
+		if !found {
+			continue
 		}
-		if matched {
-			return strings.Join(currentLines[overlap:], ""), false
+		value, err := time.Parse(time.RFC3339Nano, prefix)
+		if err == nil && value.After(latest) {
+			latest = value
 		}
 	}
-	return current, true
+	return latest
+}
+
+func stripDockerLogTimestamps(logs string) string {
+	lines := strings.SplitAfter(logs, "\n")
+	for index, line := range lines {
+		prefix, rest, found := strings.Cut(line, " ")
+		if !found {
+			continue
+		}
+		if _, err := time.Parse(time.RFC3339Nano, prefix); err == nil {
+			lines[index] = rest
+		}
+	}
+	return strings.Join(lines, "")
 }
 
 func (a *app) executeFeatureJob(ctx context.Context, item job, serverItem server, result *any) error {

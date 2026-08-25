@@ -299,7 +299,7 @@ func (a *agent) createBackup(w http.ResponseWriter, r *http.Request, serverID st
 }
 
 func (a *agent) backup(ctx context.Context, serverID, backupID string) (backupResult, error) {
-	state, _ := a.docker.State(ctx, serverID)
+	state, _ := a.docker.Readiness(ctx, serverID)
 	if state.State == "running" {
 		_, _ = a.docker.Command(ctx, serverID, "save-off")
 		_, _ = a.docker.Command(ctx, serverID, "save-all flush")

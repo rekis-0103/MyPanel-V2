@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -216,13 +217,23 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			method(w)
 			return
 		}
-		state, err := a.docker.State(ctx, id)
+		includeMetrics := r.URL.Query().Get("metrics") != "false"
+		var state dockerapi.State
+		var err error
+		if includeMetrics {
+			state, err = a.docker.State(ctx, id)
+		} else {
+			state, err = a.docker.Readiness(ctx, id)
+		}
 		if err != nil {
 			internal(w, err)
 			return
 		}
-		disk, _ := directorySize(a.serverPath(id))
-		if spec, metadataErr := a.readMetadata(id); metadataErr == nil {
+		var disk int64
+		if includeMetrics {
+			disk, _ = directorySize(a.serverPath(id))
+		}
+		if spec, metadataErr := a.readMetadata(id); metadataErr == nil && includeMetrics {
 			if disk > int64(spec.DiskMB)*1024*1024 {
 				_ = a.docker.Stop(ctx, id)
 				state.State = "error"
@@ -236,7 +247,23 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			method(w)
 			return
 		}
-		logs, err := a.docker.Logs(ctx, id)
+		since := strings.TrimSpace(r.URL.Query().Get("since"))
+		if since != "" {
+			if _, err := time.Parse(time.RFC3339Nano, since); err != nil {
+				write(w, http.StatusBadRequest, apiError{Error: "invalid log cursor", Code: "invalid_cursor"})
+				return
+			}
+		}
+		tail := 1000
+		if rawTail := r.URL.Query().Get("tail"); rawTail != "" {
+			value, err := strconv.Atoi(rawTail)
+			if err != nil || value < 0 || value > 2000 {
+				write(w, http.StatusBadRequest, apiError{Error: "invalid log tail", Code: "invalid_tail"})
+				return
+			}
+			tail = value
+		}
+		logs, err := a.docker.Logs(ctx, id, since, tail)
 		if err != nil {
 			internal(w, err)
 			return

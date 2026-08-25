@@ -179,11 +179,15 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			internal(w, err)
 			return
 		} else if action == "start" {
-			err = a.docker.Start(ctx, id)
+			if err = a.setServerCPU(ctx, id, true); err == nil {
+				err = a.docker.Start(ctx, id)
+			}
 		} else if action == "stop" {
 			err = a.docker.Stop(ctx, id)
 		} else {
-			err = a.docker.Restart(ctx, id)
+			if err = a.setServerCPU(ctx, id, true); err == nil {
+				err = a.docker.Restart(ctx, id)
+			}
 		}
 		if err != nil {
 			internal(w, err)
@@ -238,9 +242,17 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 		if includeMetrics {
 			disk, _ = directorySize(a.serverPath(id))
 		}
-		if spec, metadataErr := a.readMetadata(id); metadataErr == nil && includeMetrics {
-			state.CPUPercent = boundedCPUPercent(state.CPUPercent, spec.CPU)
-			if disk > int64(spec.DiskMB)*1024*1024 {
+		if spec, metadataErr := a.readMetadata(id); metadataErr == nil {
+			if runtimeLimit := cpuNanoLimit(spec.CPU, false); state.State == "running" && state.NanoCPUs != runtimeLimit {
+				if err := a.docker.SetCPU(ctx, id, runtimeLimit); err != nil {
+					internal(w, err)
+					return
+				}
+			}
+			if includeMetrics {
+				state.CPUPercent = boundedCPUPercent(state.CPUPercent, spec.CPU)
+			}
+			if includeMetrics && disk > int64(spec.DiskMB)*1024*1024 {
 				_ = a.docker.Stop(ctx, id)
 				state.State = "error"
 				state.Reason = "server disk limit exceeded"
@@ -334,6 +346,22 @@ func (a *agent) sendConsoleCommand(ctx context.Context, id, command string) (str
 		return a.docker.Command(ctx, id, command)
 	}
 	return "", err
+}
+
+func (a *agent) setServerCPU(ctx context.Context, id string, starting bool) error {
+	spec, err := a.readMetadata(id)
+	if err != nil {
+		return err
+	}
+	return a.docker.SetCPU(ctx, id, cpuNanoLimit(spec.CPU, starting))
+}
+
+func cpuNanoLimit(cpu int, starting bool) int64 {
+	limit := int64(cpu) * 1_000_000_000
+	if starting {
+		return limit * 125 / 100
+	}
+	return limit
 }
 
 func boundedCPUPercent(value float64, cpu int) float64 {

@@ -37,6 +37,7 @@ type State struct {
 	Reason      string  `json:"reason,omitempty"`
 	CPUPercent  float64 `json:"cpuPercent"`
 	MemoryBytes int64   `json:"memoryBytes"`
+	NanoCPUs    int64   `json:"-"`
 }
 
 type dockerStats struct {
@@ -139,6 +140,21 @@ func (c *Client) Restart(ctx context.Context, id string) error {
 	return nil
 }
 
+func (c *Client) SetCPU(ctx context.Context, id string, nanoCPUs int64) error {
+	body, err := json.Marshal(map[string]int64{"NanoCPUs": nanoCPUs})
+	if err != nil {
+		return err
+	}
+	status, response, err := c.request(ctx, http.MethodPost, "/containers/"+Name(id)+"/update", body)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return dockerError("update Minecraft CPU limit", status, response)
+	}
+	return nil
+}
+
 func (c *Client) Remove(ctx context.Context, id string) error {
 	status, body, err := c.request(ctx, http.MethodDelete, "/containers/"+Name(id)+"?force=1&v=0", nil)
 	if err != nil {
@@ -179,6 +195,9 @@ func (c *Client) Readiness(ctx context.Context, id string) (State, error) {
 		return State{}, dockerError("inspect Minecraft container", status, body)
 	}
 	var response struct {
+		HostConfig struct {
+			NanoCPUs int64 `json:"NanoCpus"`
+		} `json:"HostConfig"`
 		State struct {
 			Running   bool   `json:"Running"`
 			Status    string `json:"Status"`
@@ -208,7 +227,7 @@ func (c *Client) Readiness(ctx context.Context, id string) (State, error) {
 			}
 		}
 	}
-	return State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error)}, nil
+	return State{State: state, Reason: containerFailureReason(response.State.Running, response.State.Status, response.State.OOMKilled, response.State.ExitCode, response.State.Error), NanoCPUs: response.HostConfig.NanoCPUs}, nil
 }
 
 func minecraftReadySince(logs string, startedAt time.Time) bool {

@@ -107,3 +107,12 @@ func TestBoundedCPUPercentUsesConfiguredVCPULimit(t *testing.T) {
 		t.Fatalf("NaN CPU = %v, want 0", got)
 	}
 }
+
+func TestCPUNanoLimitAllowsOnlyStartupBurst(t *testing.T) {
+	if got := cpuNanoLimit(2, true); got != 2_500_000_000 {
+		t.Fatalf("startup CPU = %d, want 2500000000", got)
+	}
+	if got := cpuNanoLimit(2, false); got != 2_000_000_000 {
+		t.Fatalf("runtime CPU = %d, want 2000000000", got)
+	}
+}

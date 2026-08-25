@@ -153,14 +153,14 @@ func TestReadinessDoesNotWaitForDockerStats(t *testing.T) {
 		if strings.Contains(request.URL.Path, "/stats") {
 			t.Fatal("readiness requested Docker stats")
 		}
-		body := `{"State":{"Running":true,"Status":"running","Health":{"Status":"healthy"}}}`
+		body := `{"HostConfig":{"NanoCpus":2000000000},"State":{"Running":true,"Status":"running","Health":{"Status":"healthy"}}}`
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})}}
 	state, err := client.Readiness(t.Context(), "server-id")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.State != "running" || requests != 1 {
+	if state.State != "running" || state.NanoCPUs != 2_000_000_000 || requests != 1 {
 		t.Fatalf("readiness = %#v after %d requests", state, requests)
 	}
 }
@@ -327,5 +327,23 @@ func TestRestartUsesDockerRestartEndpoint(t *testing.T) {
 	}
 	if method != http.MethodPost || path != "/containers/mypanel-abcd/restart?t=30" {
 		t.Fatalf("restart request = %s %s", method, path)
+	}
+}
+
+func TestSetCPUUsesDockerUpdateEndpoint(t *testing.T) {
+	var method, path string
+	var body map[string]int64
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		method, path = request.Method, request.URL.RequestURI()
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"Warnings":[]}`)), Header: make(http.Header)}, nil
+	})}}
+	if err := client.SetCPU(t.Context(), "ab-cd", 2_500_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if method != http.MethodPost || path != "/containers/mypanel-abcd/update" || body["NanoCPUs"] != 2_500_000_000 {
+		t.Fatalf("CPU update = %s %s %#v", method, path, body)
 	}
 }

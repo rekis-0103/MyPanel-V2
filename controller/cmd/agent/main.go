@@ -185,8 +185,10 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 		} else if action == "stop" {
 			err = a.docker.Stop(ctx, id)
 		} else {
-			if err = a.setServerCPU(ctx, id, true); err == nil {
-				err = a.docker.Restart(ctx, id)
+			if err = a.docker.Stop(ctx, id); err == nil {
+				if err = a.setServerCPU(ctx, id, true); err == nil {
+					err = a.docker.Start(ctx, id)
+				}
 			}
 		}
 		if err != nil {

@@ -37,36 +37,26 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
     return () => { writeQueue.current = []; writeBusy.current = false; themeObserver.disconnect(); scroll.dispose(); resize.disconnect(); term.dispose(); terminal.current = null; };
   }, []);
   useEffect(() => {
-    let active = true; let retry: number | undefined; let streamTimer: number | undefined; let streamOrder = 0; let streamBuffer: TimedConsoleEntry[] = [];
+    let active = true; let retry: number | undefined;
     const flushWrites = () => {
       const term = terminal.current;
       if (!active || !term || writeBusy.current || writeQueue.current.length === 0) return;
-      const batch = writeQueue.current.splice(0); let lastReset = -1; for (let index = batch.length - 1; index >= 0; index--) { if (batch[index].reset) { lastReset = index; break; } } const writes = lastReset >= 0 ? batch.slice(lastReset) : batch;
-      if (lastReset >= 0) term.clear();
-      const text = (lastReset >= 0 ? '\x1b[H' : '') + writes.map((item) => item.text).join(''); const follow = writes.some((item) => item.follow);
+      const write = writeQueue.current.shift();
+      if (!write) return;
+      if (write.reset) term.clear();
+      const text = (write.reset ? '\x1b[H' : '') + write.text;
       if (!text) { queueMicrotask(flushWrites); return; }
       writeBusy.current = true;
       term.write(text, () => {
         writeBusy.current = false;
-        if (follow && !pausedRef.current) term.scrollToBottom();
+        if (write.follow && !pausedRef.current) term.scrollToBottom();
         queueMicrotask(flushWrites);
       });
     };
     const enqueue = (write: PendingWrite) => {
-      writeQueue.current.push(write);
+      if (write.reset) writeQueue.current = [write];
+      else writeQueue.current.push(write);
       flushWrites();
-    };
-    const flushStream = () => {
-      streamTimer = undefined;
-      const entries = streamBuffer.sort((left, right) => left.at - right.at || left.order - right.order);
-      streamBuffer = [];
-      enqueue({ text: entries.map((entry) => entry.text).join(''), reset: false, follow: !pausedRef.current });
-    };
-    const enqueueStream = (logs: string, lifecycle: LifecycleEntry[]) => {
-      const entries = consoleStreamEntries(logs, lifecycle, Date.now(), streamOrder);
-      streamBuffer.push(...entries);
-      streamOrder += entries.length;
-      if (streamTimer === undefined) streamTimer = window.setTimeout(flushStream, 120);
     };
     const connect = () => {
       if (!active) return; setConnection('connecting');
@@ -75,18 +65,18 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
         if (message.type === 'history') {
-          if (streamTimer !== undefined) window.clearTimeout(streamTimer);
-          streamTimer = undefined; streamBuffer = [];
           enqueue({ text: renderConsoleHistory(String(message.logs ?? ''), Array.isArray(message.lifecycle) ? message.lifecycle : []), reset: true, follow: !pausedRef.current });
         }
-        if (message.type === 'log') enqueueStream(String(message.logs ?? ''), []);
+        if (message.type === 'log') enqueue({ text: renderConsoleText(String(message.logs ?? '')), reset: false, follow: !pausedRef.current });
         if (message.type === 'lifecycle') {
-          enqueueStream('', [{ message: message.message, createdAt: message.createdAt }]);
+          enqueue({ text: renderLifecycleMessage(String(message.message ?? '')), reset: false, follow: !pausedRef.current });
         }
         if (message.type === 'status') {
           if (typeof message.state === 'string') setRuntimeState(message.state as Server['state']);
           if (message.metrics) {
-            const next = message.metrics as Metrics; setMetrics(next);
+            const raw = message.metrics as Metrics;
+            const next = { ...raw, cpuPercent: boundedMetric(raw.cpuPercent, server.cpu * 100) };
+            setMetrics(next);
             setHistory((current) => ({ cpu: appendSample(current.cpu, next.cpuPercent), memory: appendSample(current.memory, next.memoryBytes), disk: appendSample(current.disk, next.diskBytes) }));
           }
         }
@@ -95,8 +85,8 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
       ws.onclose = () => { if (active) { setConnection('disconnected'); retry = window.setTimeout(connect, 2500); } };
       ws.onerror = () => ws.close();
     };
-    connect(); return () => { active = false; if (retry) window.clearTimeout(retry); if (streamTimer !== undefined) window.clearTimeout(streamTimer); streamBuffer = []; writeQueue.current = []; socket.current?.close(); };
-  }, [server.id, tr]);
+    connect(); return () => { active = false; if (retry) window.clearTimeout(retry); writeQueue.current = []; socket.current?.close(); };
+  }, [server.cpu, server.id, tr]);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const form = event.currentTarget; const command = String(new FormData(form).get('command') ?? '').trim();
     if (!command || socket.current?.readyState !== WebSocket.OPEN) return;
@@ -130,6 +120,11 @@ export function consoleTerminalTheme(theme: ConsoleTheme): ITheme {
 }
 
 function appendSample(history: number[], value: number) { return [...history.slice(-29), Number.isFinite(value) ? value : 0]; }
+
+export function boundedMetric(value: number, max: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || value < 0 || max <= 0) return 0;
+  return Math.min(value, max);
+}
 
 export function renderConsoleText(logs: string) {
   const lines = logs.split(/\r?\n/); if (lines[lines.length - 1] === '') lines.pop();

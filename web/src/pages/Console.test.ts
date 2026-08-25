@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canSendConsoleCommand, consoleTerminalTheme, renderConsoleHistory, renderConsoleText, renderLifecycleMessage, sanitizeTerminalText } from './Console';
+import { boundedMetric, canSendConsoleCommand, consoleTerminalTheme, renderConsoleHistory, renderConsoleText, renderLifecycleMessage, sanitizeTerminalText } from './Console';
 
 describe('canSendConsoleCommand', () => {
   it('blocks commands until the server is fully running', () => {
@@ -117,5 +117,13 @@ describe('renderLifecycleMessage', () => {
     const rendered = renderConsoleHistory(logs, []);
     expect(rendered.match(/line-/g)).toHaveLength(1000);
     expect(rendered.indexOf('line-0000')).toBeLessThan(rendered.indexOf('line-0999'));
+  });
+});
+
+describe('boundedMetric', () => {
+  it('caps CPU display at the configured vCPU capacity', () => {
+    expect(boundedMetric(612.5, 200)).toBe(200);
+    expect(boundedMetric(87.25, 200)).toBe(87.25);
+    expect(boundedMetric(Number.NaN, 200)).toBe(0);
   });
 });

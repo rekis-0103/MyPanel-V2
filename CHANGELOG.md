@@ -22,7 +22,8 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
   memberi backpressure saat burst besar. Command berjalan pada worker terpisah
   dan masuk melalui named pipe bind-mounted tanpa membuat Docker exec baru;
   pipe internal dilindungi dari file manager. Sampel CPU dibatasi pada kapasitas
-  vCPU container, dan pengecekan startup yang duplikatif dikurangi.
+  vCPU container; startup mendapat burst 25% yang dikembalikan segera setelah
+  ready, dan pengecekan startup yang duplikatif dikurangi.
 - Riwayat console sekarang mengurutkan log Minecraft dan event MyPanel memakai
   timestamp yang sama, log burst dibaca dengan cursor tanpa tail-reset, dan
   readiness tidak lagi menunggu pengambilan sampel CPU atau interval healthcheck

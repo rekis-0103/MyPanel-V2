@@ -72,7 +72,9 @@
   80% of that allocation to leave native-memory headroom.
 - Server CPU follows Docker's core-relative percentage: 100% represents one
   fully used vCPU, so a two-vCPU server can reach 200%. Agent and browser both
-  bound transient sampling artifacts to the configured vCPU capacity. Working RAM subtracts
+  bound transient sampling artifacts to the configured vCPU capacity. Start
+  and restart temporarily update the Docker quota to 125% of the allocation;
+  the first readiness observation restores the exact runtime quota. Working RAM subtracts
   `inactive_file` on cgroup v2 (falling back to `cache`), and disk usage includes
   regular files only within the managed server root.
 - Docker RFC3339Nano timestamps are retained internally as ordering cursors but

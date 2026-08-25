@@ -278,7 +278,14 @@ func calculateStats(response dockerStats) State {
 func (c *Client) Logs(ctx context.Context, id, since string, tail int) (string, error) {
 	query := url.Values{"stdout": {"1"}, "stderr": {"1"}, "timestamps": {"1"}}
 	if since != "" {
-		query.Set("since", since)
+		cursor, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil {
+			return "", fmt.Errorf("invalid log cursor: %w", err)
+		}
+		// The Engine API accepts Unix seconds here. Request the cursor's whole
+		// second and let the controller filter the nanosecond timestamps so a
+		// burst containing multiple lines in one second cannot be skipped.
+		query.Set("since", strconv.FormatInt(cursor.Unix(), 10))
 	}
 	if tail > 0 {
 		query.Set("tail", strconv.Itoa(tail))

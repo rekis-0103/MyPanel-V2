@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
@@ -192,11 +194,19 @@ func TestLogsUsesTimestampCursorForIncrementalReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(path, "timestamps=1") || !strings.Contains(path, "since=2026-08-25T08%3A46%3A46.123456789Z") || strings.Contains(path, "tail=") {
+	cursor, _ := time.Parse(time.RFC3339Nano, since)
+	if !strings.Contains(path, "timestamps=1") || !strings.Contains(path, "since="+strconv.FormatInt(cursor.Unix(), 10)) || strings.Contains(path, "tail=") {
 		t.Fatalf("logs request path = %q", path)
 	}
 	if logs != "[06:59:03 INFO]: Done\n" {
 		t.Fatalf("logs = %q", logs)
+	}
+}
+
+func TestLogsRejectsInvalidTimestampCursor(t *testing.T) {
+	client := &Client{}
+	if _, err := client.Logs(t.Context(), "server-id", "not-a-timestamp", 0); err == nil {
+		t.Fatal("invalid timestamp cursor was accepted")
 	}
 }
 

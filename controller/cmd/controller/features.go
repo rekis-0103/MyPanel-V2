@@ -400,13 +400,16 @@ func (a *app) pollConsoleLogs(ctx context.Context, serverID string, cursor time.
 	for {
 		logs, err := a.agent.logs(ctx, serverID, cursor, 0)
 		if err == nil && logs != "" {
+			logs = dockerLogsAfter(logs, cursor)
 			if latest := latestDockerLogTimestamp(logs); latest.After(cursor) {
 				cursor = latest
 			}
-			select {
-			case updates <- consoleLogUpdate{Logs: logs}:
-			case <-ctx.Done():
-				return
+			if logs != "" {
+				select {
+				case updates <- consoleLogUpdate{Logs: logs}:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 		select {
@@ -457,6 +460,21 @@ func (a *app) pollConsoleState(ctx context.Context, serverID string, updates cha
 		case <-ticker.C:
 		}
 	}
+}
+
+func dockerLogsAfter(logs string, cursor time.Time) string {
+	var filtered strings.Builder
+	for _, line := range strings.SplitAfter(logs, "\n") {
+		prefix, _, found := strings.Cut(line, " ")
+		if !found {
+			continue
+		}
+		timestamp, err := time.Parse(time.RFC3339Nano, prefix)
+		if err == nil && timestamp.After(cursor) {
+			filtered.WriteString(line)
+		}
+	}
+	return filtered.String()
 }
 
 func latestDockerLogTimestamp(logs string) time.Time {

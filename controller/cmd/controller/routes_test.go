@@ -120,6 +120,22 @@ func TestLatestDockerLogTimestampTracksBurstCursor(t *testing.T) {
 	}
 }
 
+func TestDockerLogsAfterFiltersRepeatedCursorSecond(t *testing.T) {
+	cursor, err := time.Parse(time.RFC3339Nano, "2026-08-25T08:46:46.500000000Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := "2026-08-25T08:46:46.100000000Z repeated\n" +
+		"2026-08-25T08:46:46.500000000Z cursor\n" +
+		"2026-08-25T08:46:46.500000001Z next in same second\n" +
+		"2026-08-25T08:46:47.000000000Z next second\n"
+	want := "2026-08-25T08:46:46.500000001Z next in same second\n" +
+		"2026-08-25T08:46:47.000000000Z next second\n"
+	if got := dockerLogsAfter(logs, cursor); got != want {
+		t.Fatalf("filtered logs = %q, want %q", got, want)
+	}
+}
+
 func TestStripDockerLogTimestampsPreservesMinecraftOutput(t *testing.T) {
 	logs := "2026-08-25T08:46:46.100000000Z [08:46:46 INFO]: Done\nplain line\n"
 	if got, want := stripDockerLogTimestamps(logs), "[08:46:46 INFO]: Done\nplain line\n"; got != want {

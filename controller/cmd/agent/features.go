@@ -77,6 +77,10 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 	switch r.Method {
 	case http.MethodGet:
 		requested := r.URL.Query().Get("path")
+		if reservedServerPath(requested) {
+			write(w, http.StatusBadRequest, apiError{Error: "path is reserved for the server runtime", Code: "unsafe_path"})
+			return
+		}
 		target, err := safePath(root, requested, true)
 		if err != nil {
 			write(w, http.StatusBadRequest, apiError{Error: err.Error(), Code: "unsafe_path"})
@@ -97,6 +101,10 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 			return
 		}
 		if !info.IsDir() {
+			if !info.Mode().IsRegular() {
+				write(w, http.StatusBadRequest, apiError{Error: "path is not a regular file", Code: "unsafe_path"})
+				return
+			}
 			if info.Size() > 10<<20 {
 				write(w, http.StatusRequestEntityTooLarge, apiError{Error: "file is too large to open", Code: "file_too_large"})
 				return
@@ -127,6 +135,9 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 		}
 		out := make([]fileEntry, 0, len(entries))
 		for _, entry := range entries {
+			if entry.Name() == managedConsolePipe {
+				continue
+			}
 			entryInfo, err := entry.Info()
 			if err != nil {
 				continue
@@ -159,6 +170,10 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 		}
 		if input.Path == "" {
 			write(w, http.StatusBadRequest, apiError{Error: "file path is required", Code: "invalid_file"})
+			return
+		}
+		if reservedServerPath(input.Path) {
+			write(w, http.StatusBadRequest, apiError{Error: "path is reserved for the server runtime", Code: "unsafe_path"})
 			return
 		}
 		data := []byte(input.Content)
@@ -195,7 +210,7 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 		relative, _ := filepath.Rel(root, target)
 		var previous int64
 		if info, err := rootFS.Lstat(relative); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 || info.IsDir() {
+			if !info.Mode().IsRegular() {
 				write(w, http.StatusBadRequest, apiError{Error: "target is not a regular file", Code: "unsafe_path"})
 				return
 			}
@@ -222,6 +237,10 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 		write(w, http.StatusOK, map[string]any{"path": input.Path, "sizeBytes": len(data)})
 	case http.MethodDelete:
 		requested := r.URL.Query().Get("path")
+		if reservedServerPath(requested) {
+			write(w, http.StatusBadRequest, apiError{Error: "path is reserved for the server runtime", Code: "unsafe_path"})
+			return
+		}
 		target, err := safePath(root, requested, false)
 		if err != nil || target == root {
 			write(w, http.StatusBadRequest, apiError{Error: "unsafe file path", Code: "unsafe_path"})
@@ -236,6 +255,10 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 	default:
 		method(w)
 	}
+}
+
+func reservedServerPath(requested string) bool {
+	return path.Clean(strings.TrimSpace(requested)) == managedConsolePipe
 }
 
 func safePath(root, requested string, allowMissing bool) (string, error) {
@@ -338,6 +361,9 @@ func (a *agent) backup(ctx context.Context, serverID, backupID string) (backupRe
 		relative, err := filepath.Rel(a.serverPath(serverID), path)
 		if err != nil || relative == "." {
 			return err
+		}
+		if relative == managedConsolePipe {
+			return nil
 		}
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {

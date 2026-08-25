@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -59,6 +60,8 @@ type apiError struct {
 
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._+\-]{0,31}$`)
 var errDiskLimit = errors.New("server disk limit exceeded")
+
+const managedConsolePipe = ".mypanel-console-in"
 
 func main() {
 	cfg := config{
@@ -312,7 +315,7 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			write(w, http.StatusBadRequest, apiError{Error: "invalid command", Code: "invalid_command"})
 			return
 		}
-		output, err := a.docker.Command(ctx, id, input.Command)
+		output, err := a.sendConsoleCommand(ctx, id, input.Command)
 		if err != nil {
 			internal(w, err)
 			return
@@ -321,6 +324,16 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 	default:
 		a.feature(w, r, id, parts[1:])
 	}
+}
+
+func (a *agent) sendConsoleCommand(ctx context.Context, id, command string) (string, error) {
+	err := writeConsolePipe(filepath.Join(a.serverPath(id), managedConsolePipe), command)
+	if errors.Is(err, os.ErrNotExist) {
+		// Existing containers created before the persistent pipe setting remain
+		// operable until their next configuration update recreates them.
+		return a.docker.Command(ctx, id, command)
+	}
+	return "", err
 }
 
 func boundedCPUPercent(value float64, cpu int) float64 {

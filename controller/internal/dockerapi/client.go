@@ -435,6 +435,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 	environment := []string{
 		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
 		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
+		"CONSOLE_IN_NAMED_PIPE=/data/.mypanel-console-in",
 		"TERM=xterm-256color", "COLORTERM=truecolor",
 	}
 	configKeys := map[string]string{

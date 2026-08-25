@@ -22,6 +22,15 @@ func TestSafePathRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestManagedConsolePipePathIsReserved(t *testing.T) {
+	if !reservedServerPath("./" + managedConsolePipe) {
+		t.Fatal("managed console pipe was exposed to file operations")
+	}
+	if reservedServerPath("plugins/example.jar") {
+		t.Fatal("ordinary server file was treated as reserved")
+	}
+}
+
 func TestFileWriteStaysWithinServerRoot(t *testing.T) {
 	base := t.TempDir()
 	a := &agent{cfg: config{DataRoot: filepath.Join(base, "servers"), MetaRoot: filepath.Join(base, "meta")}}

@@ -20,6 +20,25 @@ describe('UI primitives', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('keeps the active field focused when an open modal rerenders', () => {
+    vi.useFakeTimers();
+    const initialClose = vi.fn(); const latestClose = vi.fn();
+    const view = render(<Modal open title="Create server" onClose={initialClose}><input aria-label="Server name" /></Modal>);
+    act(() => vi.runOnlyPendingTimers());
+    const input = screen.getByRole('textbox', { name: 'Server name' });
+    input.focus();
+
+    view.rerender(<Modal open title="Create server" onClose={latestClose}><input aria-label="Server name" /></Modal>);
+    act(() => vi.runOnlyPendingTimers());
+
+    expect(input).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(initialClose).not.toHaveBeenCalled();
+    expect(latestClose).toHaveBeenCalledOnce();
+    view.unmount();
+    vi.useRealTimers();
+  });
+
   it('switches language and persists the preference', () => {
     function Switcher() { const { locale, setLocale, tr } = useI18n(); return <button onClick={() => setLocale(locale === 'id' ? 'en' : 'id')}>{tr('Indonesia', 'English')}</button>; }
     render(<I18nProvider><Switcher /></I18nProvider>);

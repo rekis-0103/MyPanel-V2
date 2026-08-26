@@ -77,6 +77,10 @@
   the first readiness observation restores the exact runtime quota. Working RAM subtracts
   `inactive_file` on cgroup v2 (falling back to `cache`), and disk usage includes
   regular files only within the managed server root.
+- Paper and Purpur containers receive a read-only, agent-generated startup patch
+  that enables Paper's entity-lookup cache for explosions. The managed patch
+  directory is excluded from browser file operations, backups, and disk quota
+  accounting; Vanilla and modded runtimes are unchanged.
 - Docker RFC3339Nano timestamps are retained internally as ordering cursors but
   removed before display because Minecraft already emits its own timestamp.
   The initial snapshot is followed by one Docker `follow` stream from the last

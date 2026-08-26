@@ -17,6 +17,9 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 ### Fixed
 
+- Server Paper dan Purpur menerima patch startup terkelola untuk mengaktifkan
+  cache pencarian entity saat ledakan. Patch dipasang read-only dan tidak ikut
+  file manager, backup, atau kuota disk server.
 - Live console memakai satu stream Docker persisten dan langsung merender tiap
   pesan tanpa polling 100 ms atau buffer browser 120 ms; antrean xterm tetap
   memberi backpressure saat burst besar. Command berjalan pada worker terpisah

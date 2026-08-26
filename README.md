@@ -154,6 +154,10 @@ Nilai CPU runtime juga dibatasi pada kapasitas container (`jumlah vCPU × 100%`)
 sehingga server 2 vCPU ditampilkan dalam rentang 0–200%. Saat startup/restart,
 agent sementara memberi burst 25% (2 vCPU menjadi 2,5 core) dan otomatis
 mengembalikan hard limit segera setelah Minecraft siap.
+Server Paper dan Purpur juga mengaktifkan `optimize-explosions` melalui patch
+startup internal. Optimasi ini mengurangi pekerjaan pencarian entity saat TNT
+atau ledakan lain diproses, tetapi tidak menjamin 20 TPS untuk puluhan ribu TNT
+karena simulasi ledakan tetap berjalan pada tick thread Minecraft.
 
 ## Update dari GitHub
 

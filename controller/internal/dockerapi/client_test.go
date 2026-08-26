@@ -11,7 +11,7 @@ import (
 )
 
 func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
-	spec := Spec{ID: "2d86389b-f055-4b80-9d8b-daeb83f5fa15", Runtime: "paper", Version: "1.21.4", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, BindIP: "192.168.56.101", Port: 25600, DataPath: "/var/lib/mypanel/servers/id", Config: map[string]any{"motd": "Hello"}}
+	spec := Spec{ID: "2d86389b-f055-4b80-9d8b-daeb83f5fa15", Runtime: "paper", Version: "1.21.4", Image: "itzg/minecraft-server:java25", MemoryMB: 2048, CPU: 2, BindIP: "192.168.56.101", Port: 25600, DataPath: "/var/lib/mypanel/servers/id", PerformancePatchPath: "/var/lib/mypanel/servers/id/.mypanel-runtime", Config: map[string]any{"motd": "Hello"}}
 	value := ContainerSpec("itzg/minecraft-server:java21", spec)
 	host := value["HostConfig"].(map[string]any)
 	if got := host["Memory"]; got != int64(2048*1024*1024) {
@@ -19,6 +19,9 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	}
 	if got := host["Binds"].([]string)[0]; got != "/var/lib/mypanel/servers/id:/data" {
 		t.Fatalf("bind = %q", got)
+	}
+	if got := host["Binds"].([]string)[1]; got != "/var/lib/mypanel/servers/id/.mypanel-runtime:/mypanel/patches:ro" {
+		t.Fatalf("performance patch bind = %q", got)
 	}
 	if got := host["CapDrop"].([]string); len(got) != 1 || got[0] != "ALL" {
 		t.Fatalf("capability drop = %v", got)
@@ -32,6 +35,7 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 	foundPipe := false
 	foundPersistentPipe := false
 	foundTerminal := false
+	foundPerformancePatches := false
 	for _, item := range env {
 		if item == "MEMORY=1638M" {
 			foundHeap = true
@@ -45,8 +49,11 @@ func TestContainerSpecHasPersistentDataAndHeadroom(t *testing.T) {
 		if item == "TERM=xterm-256color" {
 			foundTerminal = true
 		}
+		if item == "PATCH_DEFINITIONS=/mypanel/patches" {
+			foundPerformancePatches = true
+		}
 	}
-	if !foundHeap || !foundPipe || !foundPersistentPipe || !foundTerminal {
+	if !foundHeap || !foundPipe || !foundPersistentPipe || !foundTerminal || !foundPerformancePatches {
 		t.Fatalf("required runtime environment missing: %v", env)
 	}
 	if value["OpenStdin"] != true {

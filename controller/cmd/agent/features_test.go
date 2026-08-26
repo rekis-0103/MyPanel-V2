@@ -26,8 +26,47 @@ func TestManagedConsolePipePathIsReserved(t *testing.T) {
 	if !reservedServerPath("./" + managedConsolePipe) {
 		t.Fatal("managed console pipe was exposed to file operations")
 	}
+	if !reservedServerPath(managedRuntimeDir + "/paper-performance.json") {
+		t.Fatal("managed runtime file was exposed to file operations")
+	}
 	if reservedServerPath("plugins/example.jar") {
 		t.Fatal("ordinary server file was treated as reserved")
+	}
+}
+
+func TestPrepareRuntimeFilesCreatesPaperOptimizationPatch(t *testing.T) {
+	base := t.TempDir()
+	a := &agent{cfg: config{DataRoot: filepath.Join(base, "servers")}}
+	spec := serverSpec{ID: testServerID, Runtime: "purpur"}
+	if err := os.MkdirAll(a.serverPath(testServerID), 0750); err != nil {
+		t.Fatal(err)
+	}
+	path, err := a.prepareRuntimeFiles(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(path, "paper-performance.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"$.environment.optimize-explosions"`) || !strings.Contains(string(data), `"value": true`) {
+		t.Fatalf("unexpected performance patch: %s", data)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("untrusted replacement"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.prepareRuntimeFiles(spec); err != nil {
+		t.Fatalf("replace unsafe runtime path: %v", err)
+	}
+	if info, err := os.Stat(path); err != nil || !info.IsDir() {
+		t.Fatalf("managed runtime path was not restored as a directory: info=%v err=%v", info, err)
+	}
+	vanillaPath, err := a.prepareRuntimeFiles(serverSpec{ID: testServerID, Runtime: "vanilla"})
+	if err != nil || vanillaPath != "" {
+		t.Fatalf("vanilla patch path = %q, err = %v", vanillaPath, err)
 	}
 }
 

@@ -20,16 +20,17 @@ type Client struct {
 }
 
 type Spec struct {
-	ID       string
-	Runtime  string
-	Version  string
-	Image    string
-	MemoryMB int
-	CPU      int
-	BindIP   string
-	Port     int
-	DataPath string
-	Config   map[string]any
+	ID                   string
+	Runtime              string
+	Version              string
+	Image                string
+	MemoryMB             int
+	CPU                  int
+	BindIP               string
+	Port                 int
+	DataPath             string
+	PerformancePatchPath string
+	Config               map[string]any
 }
 
 type State struct {
@@ -451,11 +452,16 @@ func Name(id string) string { return "mypanel-" + strings.ReplaceAll(id, "-", ""
 
 func ContainerSpec(image string, spec Spec) map[string]any {
 	heapMB := max(768, spec.MemoryMB*80/100)
+	binds := []string{spec.DataPath + ":/data"}
 	environment := []string{
 		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
 		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
 		"CONSOLE_IN_NAMED_PIPE=/data/.mypanel-console-in",
 		"TERM=xterm-256color", "COLORTERM=truecolor",
+	}
+	if spec.PerformancePatchPath != "" {
+		binds = append(binds, spec.PerformancePatchPath+":/mypanel/patches:ro")
+		environment = append(environment, "PATCH_DEFINITIONS=/mypanel/patches")
 	}
 	configKeys := map[string]string{
 		"motd": "MOTD", "difficulty": "DIFFICULTY", "gamemode": "MODE",
@@ -489,7 +495,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 			"MemorySwap":    int64(spec.MemoryMB) * 1024 * 1024,
 			"NanoCPUs":      int64(spec.CPU) * 1_000_000_000,
 			"PidsLimit":     int64(512),
-			"Binds":         []string{spec.DataPath + ":/data"},
+			"Binds":         binds,
 			"PortBindings":  map[string]any{"25565/tcp": []map[string]string{{"HostIp": spec.BindIP, "HostPort": strconv.Itoa(spec.Port)}}},
 			"RestartPolicy": map[string]string{"Name": "unless-stopped"},
 			"SecurityOpt":   []string{"no-new-privileges:true"},

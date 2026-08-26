@@ -135,7 +135,8 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 		}
 		out := make([]fileEntry, 0, len(entries))
 		for _, entry := range entries {
-			if entry.Name() == managedConsolePipe {
+			entryPath := filepath.ToSlash(filepath.Join(requested, entry.Name()))
+			if reservedServerPath(entryPath) {
 				continue
 			}
 			entryInfo, err := entry.Info()
@@ -148,7 +149,6 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 			} else if entry.Type()&os.ModeSymlink != 0 {
 				kind = "symlink"
 			}
-			entryPath := filepath.ToSlash(filepath.Join(requested, entry.Name()))
 			out = append(out, fileEntry{Name: entry.Name(), Path: strings.TrimPrefix(entryPath, "./"), Type: kind,
 				SizeBytes: entryInfo.Size(), Modified: entryInfo.ModTime()})
 		}
@@ -258,7 +258,8 @@ func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
 }
 
 func reservedServerPath(requested string) bool {
-	return path.Clean(strings.TrimSpace(requested)) == managedConsolePipe
+	clean := path.Clean(strings.TrimSpace(requested))
+	return clean == managedConsolePipe || clean == managedRuntimeDir || strings.HasPrefix(clean, managedRuntimeDir+"/")
 }
 
 func safePath(root, requested string, allowMissing bool) (string, error) {
@@ -364,6 +365,9 @@ func (a *agent) backup(ctx context.Context, serverID, backupID string) (backupRe
 		}
 		if relative == managedConsolePipe {
 			return nil
+		}
+		if entry.IsDir() && relative == managedRuntimeDir {
+			return filepath.SkipDir
 		}
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {

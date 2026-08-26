@@ -61,7 +61,23 @@ type apiError struct {
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._+\-]{0,31}$`)
 var errDiskLimit = errors.New("server disk limit exceeded")
 
-const managedConsolePipe = ".mypanel-console-in"
+const (
+	managedConsolePipe = ".mypanel-console-in"
+	managedRuntimeDir  = ".mypanel-runtime"
+)
+
+var paperPerformancePatch = []byte(`{
+  "file": "/data/config/paper-world-defaults.yml",
+  "ops": [
+    {
+      "$set": {
+        "path": "$.environment.optimize-explosions",
+        "value": true
+      }
+    }
+  ]
+}
+`)
 
 func main() {
 	cfg := config{
@@ -150,14 +166,23 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			internal(w, err)
 			return
 		}
+		if err := a.docker.Stop(ctx, id); err != nil {
+			internal(w, err)
+			return
+		}
+		performancePatchPath, err := a.prepareRuntimeFiles(input)
+		if err != nil {
+			internal(w, err)
+			return
+		}
 		if err := a.writeMetadata(input); err != nil {
 			internal(w, err)
 			return
 		}
-		err := a.docker.Provision(ctx, dockerapi.Spec{ID: id, Runtime: input.Runtime, Version: input.Version,
+		err = a.docker.Provision(ctx, dockerapi.Spec{ID: id, Runtime: input.Runtime, Version: input.Version,
 			Image:    a.cfg.JavaImages[input.JavaVersion],
 			MemoryMB: input.MemoryMB, CPU: input.CPU, BindIP: input.BindIP, Port: input.Port,
-			DataPath: dataPath, Config: input.Config})
+			DataPath: dataPath, PerformancePatchPath: performancePatchPath, Config: input.Config})
 		if err != nil {
 			internal(w, err)
 			return
@@ -179,15 +204,27 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			internal(w, err)
 			return
 		} else if action == "start" {
-			if err = a.setServerCPU(ctx, id, true); err == nil {
-				err = a.docker.Start(ctx, id)
+			var spec serverSpec
+			if spec, err = a.readMetadata(id); err == nil {
+				_, err = a.prepareRuntimeFiles(spec)
+			}
+			if err == nil {
+				if err = a.setServerCPU(ctx, id, true); err == nil {
+					err = a.docker.Start(ctx, id)
+				}
 			}
 		} else if action == "stop" {
 			err = a.docker.Stop(ctx, id)
 		} else {
 			if err = a.docker.Stop(ctx, id); err == nil {
-				if err = a.setServerCPU(ctx, id, true); err == nil {
-					err = a.docker.Start(ctx, id)
+				var spec serverSpec
+				if spec, err = a.readMetadata(id); err == nil {
+					_, err = a.prepareRuntimeFiles(spec)
+				}
+				if err == nil {
+					if err = a.setServerCPU(ctx, id, true); err == nil {
+						err = a.docker.Start(ctx, id)
+					}
 				}
 			}
 		}
@@ -358,6 +395,37 @@ func (a *agent) setServerCPU(ctx context.Context, id string, starting bool) erro
 	return a.docker.SetCPU(ctx, id, cpuNanoLimit(spec.CPU, starting))
 }
 
+func (a *agent) prepareRuntimeFiles(spec serverSpec) (string, error) {
+	if spec.Runtime != "paper" && spec.Runtime != "purpur" {
+		return "", nil
+	}
+	root, err := os.OpenRoot(a.serverPath(spec.ID))
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	if info, statErr := root.Lstat(managedRuntimeDir); statErr == nil && !info.IsDir() {
+		if err := root.RemoveAll(managedRuntimeDir); err != nil {
+			return "", err
+		}
+	} else if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return "", statErr
+	}
+	if err := root.MkdirAll(managedRuntimeDir, 0750); err != nil {
+		return "", err
+	}
+	path := filepath.Join(managedRuntimeDir, "paper-performance.json")
+	temporary := path + ".tmp"
+	if err := root.WriteFile(temporary, paperPerformancePatch, 0640); err != nil {
+		return "", err
+	}
+	if err := root.Rename(temporary, path); err != nil {
+		_ = root.Remove(temporary)
+		return "", err
+	}
+	return filepath.Join(a.serverPath(spec.ID), managedRuntimeDir), nil
+}
+
 func cpuNanoLimit(cpu int, starting bool) int64 {
 	limit := int64(cpu) * 1_000_000_000
 	if starting {
@@ -509,6 +577,13 @@ func directorySize(root string) (int64, error) {
 				return nil
 			}
 			return err
+		}
+		relative, relativeErr := filepath.Rel(root, path)
+		if relativeErr != nil {
+			return relativeErr
+		}
+		if entry.IsDir() && relative == managedRuntimeDir {
+			return filepath.SkipDir
 		}
 		if entry.Type().IsRegular() {
 			info, err := entry.Info()

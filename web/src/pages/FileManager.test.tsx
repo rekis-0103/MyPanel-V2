@@ -4,7 +4,7 @@ import { I18nProvider } from '../i18n';
 import type { Server } from '../types';
 import { FileManager } from './FileManager';
 
-const server = { id: 'server-1', nodeId: 'node-1', name: 'BocahSMP', runtime: 'paper', version: '1.21.4', javaVersion: 25, memoryMb: 2048, cpu: 2, diskMb: 10240, bindIp: '0.0.0.0', port: 25565, desiredState: 'offline', state: 'offline', config: {}, lastError: null, createdAt: '2026-08-21T00:00:00Z', updatedAt: '2026-08-21T00:00:00Z' } satisfies Server;
+const server = { id: 'server-1', nodeId: 'node-1', ownerUserId: 'user-1', ownerUsername: 'admin', name: 'BocahSMP', runtime: 'paper', version: '1.21.4', javaVersion: 25, memoryMb: 2048, cpu: 2, diskMb: 10240, bindIp: '0.0.0.0', port: 25565, desiredState: 'offline', state: 'offline', config: {}, lastError: null, createdAt: '2026-08-21T00:00:00Z', updatedAt: '2026-08-21T00:00:00Z' } satisfies Server;
 
 describe('FileManager', () => {
   it('renders the table and exposes unsupported operations as disabled', async () => {

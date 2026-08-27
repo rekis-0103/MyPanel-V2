@@ -8,13 +8,13 @@ describe('Login', () => {
 
   it('submits credentials and returns the owner session', async () => {
     const onLogin = vi.fn();
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ username: 'owner', role: 'owner', csrfToken: 'csrf' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ userId: 'owner-id', username: 'owner', role: 'owner', mustChangePassword: false, csrfToken: 'csrf' }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
     render(<I18nProvider><Login onLogin={onLogin} /></I18nProvider>);
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'owner' } });
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a-strong-password' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Masuk' })); });
-    await waitFor(() => expect(onLogin).toHaveBeenCalledWith({ username: 'owner', role: 'owner', csrfToken: 'csrf' }));
+    await waitFor(() => expect(onLogin).toHaveBeenCalledWith({ userId: 'owner-id', username: 'owner', role: 'owner', mustChangePassword: false, csrfToken: 'csrf' }));
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({ method: 'POST' }));
   });
 
@@ -25,5 +25,19 @@ describe('Login', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrong-password' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Masuk' })); });
     expect(await screen.findByRole('alert')).toHaveTextContent('invalid credentials');
+  });
+
+  it('registers a user through the shared login page', async () => {
+    const onLogin = vi.fn();
+    const userSession = { userId: 'user-id', username: 'player', role: 'user', mustChangePassword: false, csrfToken: 'csrf-user' };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(userSession), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<I18nProvider><Login onLogin={onLogin} /></I18nProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Belum punya akun? Daftar' }));
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'player' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a-strong-password' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Daftar' })); });
+    await waitFor(() => expect(onLogin).toHaveBeenCalledWith(userSession));
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/register', expect.objectContaining({ method: 'POST' }));
   });
 });

@@ -1,19 +1,20 @@
 import { CirclePlus, Server as ServerIcon } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { ActionButton } from '../components/ui/ActionButton';
 import { Modal } from '../components/ui/Modal';
 import { EmptyState } from '../components/ui/States';
 import { useI18n } from '../i18n';
-import type { ActionResponse, Metrics, Runtime, Server } from '../types';
+import type { ActionResponse, Metrics, PanelUser, Runtime, Server } from '../types';
 import { ServerCard } from './Dashboard';
 
-export function ServersPage({ servers, catalog, busy, act, setBusy, onCreated, onError }: {
-  servers: Server[]; catalog: Runtime[]; busy: boolean; act: (server: Server, action: string) => Promise<void>; setBusy: (busy: boolean) => void; onCreated: () => Promise<void>; onError: (error: unknown) => void;
+export function ServersPage({ servers, catalog, busy, act, setBusy, onCreated, onError, canCreate = true }: {
+  servers: Server[]; catalog: Runtime[]; busy: boolean; act: (server: Server, action: string) => Promise<void>; setBusy: (busy: boolean) => void; onCreated: () => Promise<void>; onError: (error: unknown) => void; canCreate?: boolean;
 }) {
-  const { tr } = useI18n(); const [search, setSearch] = useSearchParams();
+  const { tr } = useI18n(); const [search, setSearch] = useSearchParams(); const navigate = useNavigate();
   const [metrics, setMetrics] = useState<Record<string, Metrics | null>>({});
+  const [query, setQuery] = useState(''); const [transfer, setTransfer] = useState<Server | null>(null); const [users, setUsers] = useState<PanelUser[]>([]); const [transferBusy, setTransferBusy] = useState(false);
   const open = search.get('create') === '1';
   useEffect(() => {
     let active = true;
@@ -22,10 +23,14 @@ export function ServersPage({ servers, catalog, busy, act, setBusy, onCreated, o
     });
     return () => { active = false; };
   }, [servers]);
+  useEffect(() => { if (canCreate) api<PanelUser[]>('/api/v1/admin/users').then((items) => setUsers(items.filter((item) => item.role === 'user' && item.status === 'active'))).catch(onError); }, [canCreate, onError]);
   const close = () => setSearch({});
-  return <div className="page-stack"><div className="page-heading"><div><p className="eyebrow">INSTANCES</p><h1>{tr('Server', 'Servers')}</h1><p>{tr('Kelola seluruh instance Minecraft pada node ini.', 'Manage every Minecraft instance on this node.')}</p></div><ActionButton icon={CirclePlus} onClick={() => setSearch({ create: '1' })}>{tr('Buat Server', 'Create Server')}</ActionButton></div>
-    <section className="surface server-inventory">{servers.length === 0 ? <EmptyState icon={ServerIcon} title={tr('Belum ada server', 'No servers yet')} description={tr('Buat server Minecraft pertama Anda untuk memulai.', 'Create your first Minecraft server to get started.')} action={{ label: tr('Buat Server', 'Create Server'), onClick: () => setSearch({ create: '1' }) }} /> : <div className="server-card-list inventory">{servers.map((server) => <ServerCard key={server.id} server={server} metrics={metrics[server.id]} busy={busy} act={act} />)}</div>}</section>
-    <Modal open={open} onClose={close} title={tr('Buat Server Minecraft', 'Create Minecraft Server')}><CreateServerForm catalog={catalog} busy={busy} setBusy={setBusy} onCreated={async () => { await onCreated(); close(); }} onError={onError} /></Modal>
+  const visible = servers.filter((server) => `${server.name} ${server.id} ${server.ownerUsername}`.toLowerCase().includes(query.toLowerCase()));
+  const transferOwner = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!transfer) return; setTransferBusy(true); const data = new FormData(event.currentTarget); try { await api(`/api/v1/admin/servers/${transfer.id}/owner`, { method: 'PUT', body: JSON.stringify({ userId: data.get('userId') }) }); setTransfer(null); await onCreated(); } catch (error) { onError(error); } finally { setTransferBusy(false); } };
+  return <div className="page-stack"><div className="page-heading"><div><p className="eyebrow">INSTANCES</p><h1>{tr('Server', 'Servers')}</h1><p>{tr('Kelola instance Minecraft yang dapat Anda akses.', 'Manage Minecraft instances you can access.')}</p></div>{canCreate && <ActionButton icon={CirclePlus} onClick={() => setSearch({ create: '1' })}>{tr('Buat Server', 'Create Server')}</ActionButton>}</div>
+    <section className="surface server-inventory">{servers.length === 0 ? <EmptyState icon={ServerIcon} title={tr('Belum ada server', 'No servers yet')} description={canCreate ? tr('Buat server Minecraft pertama Anda untuk memulai.', 'Create your first Minecraft server to get started.') : tr('Pilih paket hosting untuk membuat server pertama Anda.', 'Choose a hosting package to create your first server.')} action={{ label: canCreate ? tr('Buat Server', 'Create Server') : tr('Beli Server', 'Buy Server'), onClick: () => canCreate ? setSearch({ create: '1' }) : navigate('/marketplace') }} /> : <><div className="inventory-toolbar"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tr('Cari nama, ID, atau pemilik…', 'Search name, ID, or owner…')} aria-label={tr('Cari server', 'Search servers')} /></div>{visible.length === 0 ? <EmptyState icon={ServerIcon} title={tr('Server tidak ditemukan', 'No matching servers')} description={tr('Coba kata kunci nama, ID, atau pemilik yang lain.', 'Try another name, ID, or owner keyword.')} /> : <div className="server-card-list inventory">{visible.map((server) => <ServerCard key={server.id} server={server} metrics={metrics[server.id]} busy={busy} act={act} showOwner={canCreate} onTransfer={canCreate ? setTransfer : undefined} />)}</div>}</>}</section>
+    <Modal open={open && canCreate} onClose={close} title={tr('Buat Server Minecraft', 'Create Minecraft Server')}><CreateServerForm catalog={catalog} busy={busy} setBusy={setBusy} onCreated={async () => { await onCreated(); close(); }} onError={onError} /></Modal>
+    <Modal open={!!transfer} onClose={() => setTransfer(null)} title={tr(`Alihkan ${transfer?.name ?? ''}`, `Transfer ${transfer?.name ?? ''}`)}><form className="form-stack" onSubmit={transferOwner}><label>{tr('Pemilik baru', 'New owner')}<select name="userId" required defaultValue=""><option value="" disabled>{tr('Pilih user aktif', 'Select an active user')}</option>{users.map((user) => <option key={user.id} value={user.id}>{user.username} · {user.id}</option>)}</select></label><p className="form-note">{tr('Server dan langganannya akan dipindahkan ke akun yang dipilih.', 'The server and its subscription will move to the selected account.')}</p><ActionButton type="submit" loading={transferBusy}>{tr('Alihkan server', 'Transfer server')}</ActionButton></form></Modal>
   </div>;
 }
 

@@ -31,13 +31,19 @@ func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 func (a *app) serverCollection(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		items, err := a.store.list(r.Context())
+		session, _ := currentSession(r.Context())
+		items, err := a.store.listForSession(r.Context(), session)
 		if err != nil {
 			internal(w, r, err)
 			return
 		}
 		write(w, http.StatusOK, items)
 	case http.MethodPost:
+		session, _ := currentSession(r.Context())
+		if session.Role != "owner" {
+			forbidden(w, r)
+			return
+		}
 		var input createServerInput
 		if decode(w, r, &input) != nil {
 			return
@@ -51,11 +57,11 @@ func (a *app) serverCollection(w http.ResponseWriter, r *http.Request) {
 		input.JavaVersion = normalizeJavaVersion(input.JavaVersion)
 		if input.Name == "" || len(input.Name) > 48 || !runtimeOK(input.Runtime) ||
 			!versionPattern.MatchString(input.Version) || !javaVersionOK(input.JavaVersion) || input.MemoryMB < 1024 || input.MemoryMB > 8192 ||
-			input.CPU < 1 || input.CPU > a.cfg.NodeCPUs || input.DiskMB < 1024 || input.DiskMB > 102400 {
+			input.CPU < 1 || input.CPU > a.cfg.NodeCPUs || input.DiskMB < 1024 || input.DiskMB > a.cfg.NodeDiskMB {
 			write(w, http.StatusBadRequest, apiError{Error: "invalid server configuration", Code: "invalid_server", RequestID: requestID(r.Context())})
 			return
 		}
-		item, err := a.store.create(r.Context(), input, a.cfg)
+		item, err := a.store.create(r.Context(), input, a.cfg, session.UserID)
 		if errors.Is(err, errCapacity) || errors.Is(err, errNoAllocation) {
 			write(w, http.StatusConflict, apiError{Error: err.Error(), Code: "capacity_conflict", RequestID: requestID(r.Context())})
 			return
@@ -72,7 +78,6 @@ func (a *app) serverCollection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		item.CurrentJob = &createdJob
-		session, _ := currentSession(r.Context())
 		_ = a.store.audit(r.Context(), &session.UserID, "server.create", "server", item.ID, clientIP(r), map[string]any{"name": item.Name})
 		write(w, http.StatusAccepted, map[string]any{"server": item, "job": createdJob})
 	default:
@@ -87,6 +92,17 @@ func (a *app) serverItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
+	session, _ := currentSession(r.Context())
+	if _, err := a.store.getForSession(r.Context(), id, session); err != nil {
+		notFound(w, r)
+		return
+	}
+	if session.Role != "owner" && !(len(parts) == 1 && r.Method == http.MethodGet) {
+		if status, err := a.store.subscriptionStatus(r.Context(), id); err == nil && (status == "grace" || status == "released" || status == "canceled") {
+			forbidden(w, r)
+			return
+		}
+	}
 	if len(parts) == 1 {
 		switch r.Method {
 		case http.MethodGet:
@@ -101,6 +117,10 @@ func (a *app) serverItem(w http.ResponseWriter, r *http.Request) {
 			}
 			write(w, http.StatusOK, item)
 		case http.MethodDelete:
+			if session.Role != "owner" {
+				forbidden(w, r)
+				return
+			}
 			var input struct {
 				PurgeData bool `json:"purgeData"`
 			}
@@ -220,6 +240,11 @@ func (a *app) jobItem(w http.ResponseWriter, r *http.Request) {
 		internal(w, r, err)
 		return
 	}
+	session, _ := currentSession(r.Context())
+	if _, err := a.store.getForSession(r.Context(), item.ServerID, session); err != nil {
+		notFound(w, r)
+		return
+	}
 	write(w, http.StatusOK, item)
 }
 
@@ -228,7 +253,8 @@ func (a *app) auditCollection(w http.ResponseWriter, r *http.Request) {
 		method(w)
 		return
 	}
-	items, err := a.store.listAudit(r.Context(), 100)
+	session, _ := currentSession(r.Context())
+	items, err := a.store.listAuditForSession(r.Context(), session, 100)
 	if err != nil {
 		internal(w, r, err)
 		return

@@ -52,6 +52,12 @@ func (c *agentClient) health(ctx context.Context) error {
 	return c.do(ctx, http.MethodGet, "/v1/health", nil, nil)
 }
 
+func (c *agentClient) nodeMetrics(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	err := c.do(ctx, http.MethodGet, "/v1/node/metrics", nil, &out)
+	return out, err
+}
+
 func (c *agentClient) serverAction(ctx context.Context, serverID, action string, input, output any) error {
 	return c.do(ctx, http.MethodPost, "/v1/servers/"+url.PathEscape(serverID)+"/"+action, input, output)
 }

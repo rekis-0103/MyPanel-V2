@@ -32,7 +32,10 @@ func openStore(ctx context.Context, databaseURL string) (*store, error) {
 
 const serverColumns = `s.id, s.node_id, s.name, s.runtime, s.version, s.java_version, s.memory_mb,
  s.cpu, s.disk_mb, s.bind_ip, s.port, s.desired_state, s.observed_state,
- s.config, s.last_error, s.created_at, s.updated_at`
+ s.config, s.last_error, s.created_at, s.updated_at, s.owner_user_id,
+ COALESCE((SELECT username FROM users u WHERE u.id=s.owner_user_id),''),
+ (SELECT status FROM subscriptions sub WHERE sub.server_id=s.id),
+ (SELECT current_period_end FROM subscriptions sub WHERE sub.server_id=s.id)`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -41,13 +44,40 @@ func scanServer(row rowScanner) (server, error) {
 	err := row.Scan(&item.ID, &item.NodeID, &item.Name, &item.Runtime, &item.Version, &item.JavaVersion,
 		&item.MemoryMB, &item.CPU, &item.DiskMB, &item.BindIP, &item.Port,
 		&item.DesiredState, &item.State, &item.Config, &item.LastError,
-		&item.CreatedAt, &item.UpdatedAt)
+		&item.CreatedAt, &item.UpdatedAt, &item.OwnerUserID, &item.OwnerUsername,
+		&item.SubscriptionStatus, &item.SubscriptionEndsAt)
 	return item, err
 }
 
 func (s *store) list(ctx context.Context) ([]server, error) {
 	rows, err := s.db.Query(ctx, `SELECT `+serverColumns+`
 FROM servers s WHERE s.deleted_at IS NULL ORDER BY s.created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]server, 0)
+	for rows.Next() {
+		item, err := scanServer(rows)
+		if err != nil {
+			return nil, err
+		}
+		active, err := s.activeJob(ctx, item.ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		item.CurrentJob = active
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *store) listForSession(ctx context.Context, session sessionRecord) ([]server, error) {
+	if session.Role == "owner" {
+		return s.list(ctx)
+	}
+	rows, err := s.db.Query(ctx, `SELECT `+serverColumns+`
+FROM servers s WHERE s.deleted_at IS NULL AND s.owner_user_id=$1 ORDER BY s.created_at DESC`, session.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +112,18 @@ FROM servers s WHERE s.id=$1 AND s.deleted_at IS NULL`, id))
 	return item, nil
 }
 
-func (s *store) create(ctx context.Context, in createServerInput, cfg config) (server, error) {
+func (s *store) getForSession(ctx context.Context, id string, session sessionRecord) (server, error) {
+	item, err := s.get(ctx, id)
+	if err != nil {
+		return server{}, err
+	}
+	if session.Role != "owner" && item.OwnerUserID != session.UserID {
+		return server{}, pgx.ErrNoRows
+	}
+	return item, nil
+}
+
+func (s *store) create(ctx context.Context, in createServerInput, cfg config, ownerID string) (server, error) {
 	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return server{}, err
@@ -91,12 +132,16 @@ func (s *store) create(ctx context.Context, in createServerInput, cfg config) (s
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(74201)`); err != nil {
 		return server{}, err
 	}
-	var memoryUsed, cpuUsed int
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(memory_mb),0), COALESCE(sum(cpu),0)
-FROM servers WHERE deleted_at IS NULL`).Scan(&memoryUsed, &cpuUsed); err != nil {
+	var memoryUsed, cpuUsed, diskUsed int
+	if err := tx.QueryRow(ctx, `SELECT
+COALESCE(sum(CASE WHEN subscriptions.id IS NULL OR subscriptions.status IN ('provisioning','active','action_required','grace') THEN servers.memory_mb ELSE 0 END),0),
+COALESCE(sum(CASE WHEN subscriptions.id IS NULL OR subscriptions.status IN ('provisioning','active','action_required','grace') THEN servers.cpu ELSE 0 END),0),
+COALESCE(sum(servers.disk_mb),0)
+FROM servers LEFT JOIN subscriptions ON subscriptions.server_id=servers.id
+WHERE servers.deleted_at IS NULL`).Scan(&memoryUsed, &cpuUsed, &diskUsed); err != nil {
 		return server{}, err
 	}
-	if memoryUsed+in.MemoryMB > cfg.NodeMemoryMB || cpuUsed+in.CPU > cfg.NodeCPUs {
+	if memoryUsed+in.MemoryMB > cfg.NodeMemoryMB || cpuUsed+in.CPU > cfg.NodeCPUs || diskUsed+in.DiskMB > cfg.NodeDiskMB {
 		return server{}, errCapacity
 	}
 	var port int
@@ -111,14 +156,14 @@ ORDER BY candidate LIMIT 1`, cfg.PortStart, cfg.PortEnd, defaultNodeID, cfg.Bind
 	item := server{
 		ID: uuid.NewString(), NodeID: defaultNodeID, Name: in.Name, Runtime: in.Runtime,
 		Version: in.Version, JavaVersion: in.JavaVersion, MemoryMB: in.MemoryMB, CPU: in.CPU, DiskMB: in.DiskMB,
-		BindIP: cfg.BindIP, Port: port, DesiredState: "offline", State: "installing",
+		BindIP: cfg.BindIP, Port: port, DesiredState: "offline", State: "installing", OwnerUserID: ownerID,
 		Config: json.RawMessage(`{}`),
 	}
 	err = tx.QueryRow(ctx, `INSERT INTO servers
-(id,node_id,name,runtime,version,java_version,memory_mb,cpu,disk_mb,bind_ip,port,desired_state,observed_state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'offline','installing')
+(id,node_id,name,runtime,version,java_version,memory_mb,cpu,disk_mb,bind_ip,port,desired_state,observed_state,owner_user_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'offline','installing',$12)
 RETURNING created_at,updated_at`, item.ID, item.NodeID, item.Name, item.Runtime,
-		item.Version, item.JavaVersion, item.MemoryMB, item.CPU, item.DiskMB, item.BindIP, item.Port).
+		item.Version, item.JavaVersion, item.MemoryMB, item.CPU, item.DiskMB, item.BindIP, item.Port, ownerID).
 		Scan(&item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return server{}, err
@@ -394,8 +439,16 @@ VALUES ($1,$2,$3,'owner')`, uuid.NewString(), username, passwordHash)
 
 func (s *store) findUser(ctx context.Context, username string) (userRecord, error) {
 	var out userRecord
-	err := s.db.QueryRow(ctx, `SELECT id,username,password_hash,role FROM users WHERE username=$1`, username).
-		Scan(&out.ID, &out.Username, &out.PasswordHash, &out.Role)
+	err := s.db.QueryRow(ctx, `SELECT id,username,password_hash,role,status,session_version,must_change_password
+FROM users WHERE lower(username)=lower($1)`, username).
+		Scan(&out.ID, &out.Username, &out.PasswordHash, &out.Role, &out.Status, &out.SessionVersion, &out.MustChangePassword)
+	return out, err
+}
+
+func (s *store) findUserByID(ctx context.Context, id string) (userRecord, error) {
+	var out userRecord
+	err := s.db.QueryRow(ctx, `SELECT id,username,password_hash,role,status,session_version,must_change_password FROM users WHERE id=$1`, id).
+		Scan(&out.ID, &out.Username, &out.PasswordHash, &out.Role, &out.Status, &out.SessionVersion, &out.MustChangePassword)
 	return out, err
 }
 
@@ -562,8 +615,11 @@ func (s *store) deleteSchedule(ctx context.Context, serverID, scheduleID string)
 
 func (s *store) claimDueSchedules(ctx context.Context, limit int) ([]schedule, error) {
 	rows, err := s.db.Query(ctx, `WITH due AS (
-  SELECT id FROM schedules WHERE enabled AND next_run_at<=now()
-  ORDER BY next_run_at FOR UPDATE SKIP LOCKED LIMIT $1
+  SELECT schedules.id FROM schedules
+  LEFT JOIN subscriptions ON subscriptions.server_id=schedules.server_id
+  WHERE schedules.enabled AND schedules.next_run_at<=now()
+    AND (subscriptions.id IS NULL OR subscriptions.status='active')
+  ORDER BY next_run_at FOR UPDATE OF schedules SKIP LOCKED LIMIT $1
 )
 UPDATE schedules s SET last_run_at=now(),next_run_at=now()+make_interval(mins=>s.interval_minutes)
 FROM due WHERE s.id=due.id

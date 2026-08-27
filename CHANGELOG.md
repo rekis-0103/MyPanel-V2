@@ -8,6 +8,13 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 ### Added
 
+- Multi-user registration and login, owner/user RBAC, server ownership, account
+  suspension, forced password change after admin reset, and session invalidation.
+- Simulated packages, atomic checkout, idempotent orders, 30-day subscriptions,
+  seven-day grace, renewal/reactivation, provisioning retry, and capacity checks.
+- Admin pages for accounts, packages, node capacity, server owner visibility,
+  server-ID search, and controlled ownership transfer.
+- Host CPU/RAM/disk/uptime telemetry over the private mTLS agent link.
 - Pilihan Java 21 atau Java 25 per server, dengan image allowlist di agent dan
   migrasi kompatibel untuk server lama.
 - Script update VM berbasis fast-forward dengan build, migrasi eksplisit,

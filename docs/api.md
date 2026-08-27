@@ -1,9 +1,15 @@
-# MyPanel V1 API
+# MyPanel V2 API
 
 Semua respons API menggunakan JSON kecuali WebSocket console dan respons tanpa
 body. Error berbentuk `{ "error": "...", "code": "...", "requestId": "..." }`.
 
 ## Authentication
+
+Selain login owner yang sudah ada, `POST /api/v1/auth/register` membuat akun
+role `user` ketika `REGISTRATION_ENABLED=true`. Registrasi dibatasi per IP.
+`POST /api/v1/auth/change-password` mengganti password sendiri. Akun yang
+di-reset owner hanya dapat memakai endpoint auth sampai password sementara
+diganti. Suspend, reset, dan perubahan password menginvalidasi session lama.
 
 - `POST /api/v1/auth/login` — body `username` dan `password`; menetapkan cookie
   HttpOnly dan mengembalikan user beserta `csrfToken`.
@@ -22,6 +28,11 @@ mengirim `X-CSRF-Token`, dan origin browser harus sama dengan `TRUSTED_ORIGIN`.
 
 ## Servers dan jobs
 
+`GET /servers` dibatasi oleh ownership untuk role `user`; owner melihat semua
+server beserta `ownerUserId` dan `ownerUsername`. Create/delete server mentah
+hanya tersedia untuk owner. Semua endpoint turunan server dan job melakukan
+cek ownership lagi di controller, termasuk upgrade WebSocket.
+
 - `GET|POST /api/v1/servers`
 - `GET|DELETE /api/v1/servers/{id}`
 - `POST /api/v1/servers/{id}/actions` — `start`, `stop`, atau `restart`.
@@ -36,6 +47,30 @@ Create server menerima `javaVersion` bernilai `21` atau `25`. Nilai kosong dari
 client lama dianggap `21`. Respons server selalu menyertakan `javaVersion`.
 Nama/tag image tidak pernah diterima dari browser; agent memetakan versi yang
 sudah divalidasi ke image yang dikonfigurasi operator.
+
+## Hosting simulasi dan administrasi
+
+- `GET /api/v1/packages` — paket aktif; owner dapat memakai `?all=1`.
+- `POST /api/v1/packages`, `PUT|DELETE /api/v1/packages/{id}` — kelola paket,
+  khusus owner.
+- `GET /api/v1/capacity` — user menerima sisa kapasitas jual dan availability
+  paket; owner juga menerima total, reserved, dan telemetri host.
+- `POST /api/v1/checkout` — khusus user; membutuhkan `packageId`, UUID
+  `idempotencyKey`, nama server, runtime, versi Minecraft, dan Java 21/25.
+- `GET /api/v1/orders` dan `GET /api/v1/subscriptions` — milik user; owner
+  melihat seluruh data.
+- `POST /api/v1/subscriptions/{id}/renew` — perpanjangan simulasi 30 hari.
+- `POST /api/v1/subscriptions/{id}/retry` — ulang provisioning berstatus
+  `action_required` tanpa pembayaran baru.
+- `GET /api/v1/admin/users` — daftar/search user, khusus owner.
+- `PUT /api/v1/admin/users/{id}/status` — suspend/aktifkan dan invalidasi session.
+- `POST /api/v1/admin/users/{id}/reset-password` — tetapkan password sementara.
+- `PUT /api/v1/admin/servers/{id}/owner` — alihkan server berlangganan ke user
+  aktif lain.
+
+Checkout dan reaktivasi memakai advisory lock PostgreSQL. Pengecekan kapasitas,
+alokasi port, order, subscription, server, dan job berada dalam transaksi. UUID
+idempotency unik per user mencegah order ganda saat request diulang.
 
 Config menerima properti server yang sudah ada serta `jvmOpts` dan `extraArgs`.
 Kedua startup field dibatasi 512 karakter dan hanya menerima karakter allowlist;

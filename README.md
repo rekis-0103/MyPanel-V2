@@ -1,18 +1,27 @@
 # MyPanel V2
 
-MyPanel adalah control plane Minecraft Java untuk satu owner dan satu Linux VM.
+MyPanel adalah control plane dan simulasi layanan hosting Minecraft Java
+multi-user untuk satu Linux VM.
 Arsitekturnya terinspirasi panel hosting modern, tetapi implementasinya berdiri
 sendiri: React untuk UI, Go untuk controller dan node agent, PostgreSQL untuk
 state durable, Redis untuk session/rate limit, serta Docker untuk runtime server.
 
-Status proyek: **v0.1.0 / v1 single-node**. Fitur inti sudah dapat dijalankan,
-tetapi proyek belum ditujukan sebagai layanan multi-tenant atau pengganti
-Pterodactyl yang kompatibel langsung.
+Status proyek: **v0.2.0-dev / single-node multi-tenant**. Transaksi di panel
+bersifat simulasi dan tidak memproses uang nyata. Proyek belum ditujukan sebagai
+pengganti Pterodactyl yang kompatibel langsung.
 
 ## Fitur v1
 
-- Login owner dengan Argon2id, session opaque di Redis, CSRF, origin check, dan
-  rate limit login.
+- Login owner dan user dengan Argon2id, session opaque di Redis, CSRF, origin
+  check, rate limit, registrasi opsional, suspend akun, serta reset password
+  sementara yang wajib diganti saat login berikutnya.
+- Isolasi ownership: user hanya dapat melihat dan mengelola resource server
+  miliknya; owner dapat mengelola semua server melalui ID serta melihat pemilik.
+- Marketplace paket, checkout instan simulasi, order, perpanjangan 30 hari,
+  retry provisioning, masa tenggang 7 hari, dan pelepasan CPU/RAM/port tanpa
+  menghapus world.
+- Dashboard kapasitas admin untuk total, reservasi, sisa vCPU/RAM/disk/port, dan
+  telemetri host. Checkout ditolak atomik bila resource tidak cukup.
 - Provisioning asynchronous dan lifecycle start/stop/restart/delete dengan job
   durable serta reconciliation desired/observed state.
 - Runtime Vanilla, Paper, Purpur, Fabric, Forge, dan NeoForge dengan versi
@@ -38,6 +47,10 @@ sedangkan kontrak HTTP ada di [docs/api.md](docs/api.md).
 - Sedikitnya 4 GiB RAM; sesuaikan `NODE_MEMORY_MB` agar menyisakan RAM untuk OS,
   database, Redis, controller, dan agent
 - Port panel dan rentang port game yang dapat dijangkau oleh klien yang sesuai
+
+Tetapkan `NODE_CPUS`, `NODE_MEMORY_MB`, dan `NODE_DISK_MB` sebagai kapasitas yang
+boleh dijual. Sisakan headroom untuk OS dan service panel. Registrasi publik
+dapat dimatikan dengan `REGISTRATION_ENABLED=false`.
 
 ## Instalasi
 
@@ -94,6 +107,23 @@ Alamat server yang bind ke `0.0.0.0` ditampilkan menggunakan hostname panel,
 sehingga panel pada `192.168.56.101` mengiklankan `192.168.56.101:<port>` tanpa
 mengubah bind Docker yang tetap menerima koneksi pada seluruh interface.
 
+## Alur akun dan hosting simulasi
+
+Owner tetap login dengan akun bootstrap lama. User mendaftar dari halaman login,
+memilih paket, lalu checkout simulasi membuat server, order, subscription,
+alokasi port, dan job provisioning dalam satu transaksi. Tidak ada payment
+gateway atau uang nyata.
+
+Subscription berlaku 30 hari. Setelah kedaluwarsa, server dihentikan dan masuk
+masa tenggang 7 hari. Jika belum diperpanjang, container, CPU, RAM, dan port
+dilepas; world tetap disimpan dan disk masih dihitung sebagai kapasitas
+terpakai. Reaktivasi mengambil port baru dan memprovision ulang container dengan
+data lama. Schedule tidak berjalan untuk subscription yang tidak aktif.
+
+Saat migrasi multi-user pertama, session Redis lama akan ditolak karena belum
+memiliki versi session. Login ulang sekali dengan credential yang sama; password
+owner tidak berubah.
+
 Saat membuat server, pilih Java 21 untuk kompatibilitas luas atau Java 25 untuk
 server/plugin modern yang sudah mendukungnya. Image dapat dipin melalui
 `MINECRAFT_IMAGE_JAVA_21` dan `MINECRAFT_IMAGE_JAVA_25` di `.env`; browser tidak
@@ -121,10 +151,9 @@ Frontend dev server memakai `pnpm dev` dan mem-proxy `/api` ke controller pada
 Caddy produksi. Untuk validasi deployment, jalankan
 `docker compose config --quiet` sebelum `docker compose up`.
 
-Telemetri CPU, RAM, disk, dan uptime host belum memiliki endpoint global.
-Dashboard hanya menampilkan total resource yang dialokasikan ke server dan
-menandai telemetri host sebagai belum tersedia, sehingga UI tidak menampilkan
-angka simulasi. Operasi file Rename dan New Folder juga dinonaktifkan sampai
+Telemetri CPU, RAM, disk, dan uptime host tersedia untuk owner melalui endpoint
+kapasitas; user hanya menerima sisa kapasitas jual dan ketersediaan paket.
+Operasi file Rename dan New Folder tetap dinonaktifkan sampai
 kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
 Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
 vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
@@ -189,10 +218,12 @@ Kontribusi melalui issue atau pull request dipersilakan. Jangan melaporkan
 kerentanan atau membagikan kredensial melalui issue publik; ikuti
 [SECURITY.md](SECURITY.md).
 
-## Batasan v1
+## Batasan saat ini
 
-- Satu owner dan satu node; belum ada multi-tenant, sub-user, billing, atau
-  cluster scheduling.
+- Satu owner dan satu node; belum ada cluster scheduling, invoice pajak,
+  payment gateway nyata, refund, kupon, atau email transactional.
+- Pembelian dan pembayaran sepenuhnya simulasi. Status order bukan bukti
+  pembayaran nyata.
 - Kuota disk ditegakkan oleh file manager, pemeriksaan sebelum start/restart,
   dan reconciliation berkala. Hard filesystem project quota bergantung pada
   filesystem host dan belum dikonfigurasi otomatis.

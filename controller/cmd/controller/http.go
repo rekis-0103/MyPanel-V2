@@ -74,3 +74,7 @@ func internal(w http.ResponseWriter, r *http.Request, err error) {
 func notFound(w http.ResponseWriter, r *http.Request) {
 	write(w, http.StatusNotFound, apiError{Error: "resource not found", Code: "not_found", RequestID: requestID(r.Context())})
 }
+
+func forbidden(w http.ResponseWriter, r *http.Request) {
+	write(w, http.StatusForbidden, apiError{Error: "permission denied", Code: "permission_denied", RequestID: requestID(r.Context())})
+}

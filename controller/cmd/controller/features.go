@@ -21,13 +21,20 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 		notFound(w, r)
 		return
 	}
-	if _, err := a.store.get(r.Context(), serverID); err != nil {
+	session, _ := currentSession(r.Context())
+	if _, err := a.store.getForSession(r.Context(), serverID, session); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			notFound(w, r)
 		} else {
 			internal(w, r, err)
 		}
 		return
+	}
+	if session.Role != "owner" {
+		if status, err := a.store.subscriptionStatus(r.Context(), serverID); err == nil && (status == "grace" || status == "released" || status == "canceled") {
+			forbidden(w, r)
+			return
+		}
 	}
 	switch parts[0] {
 	case "logs":

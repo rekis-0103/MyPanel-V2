@@ -13,6 +13,10 @@ export type Job = {
 export type Server = {
   id: string;
   nodeId: string;
+  ownerUserId: string;
+  ownerUsername: string;
+  subscriptionStatus?: Subscription['status'] | null;
+  subscriptionEndsAt?: string | null;
   name: string;
   runtime: string;
   version: string;
@@ -75,7 +79,14 @@ export type Metrics = {
 };
 
 export type Runtime = { id: string; name: string; java: number; javaVersions: Array<21 | 25> };
-export type Session = { username: string; role: string; csrfToken: string };
+export type Session = { userId: string; username: string; role: 'owner' | 'user'; mustChangePassword: boolean; csrfToken: string };
+
+export type HostingPackage = { id: string; slug: string; name: string; description: string; priceIdr: number; cpu: number; memoryMb: number; diskMb: number; sortOrder: number; active: boolean; createdAt: string; updatedAt: string };
+export type CapacityNumbers = { cpu: number; memoryMb: number; diskMb: number; ports: number };
+export type Capacity = { total?: CapacityNumbers; reserved?: CapacityNumbers; available: CapacityNumbers; packageAvailability: Record<string, boolean>; host?: { cpu: number; memoryBytes: number; memoryAvailableBytes: number; diskBytes: number; diskAvailableBytes: number; uptimeSeconds: number }; hostUnavailable?: boolean };
+export type Order = { id: string; userId: string; serverId: string; subscriptionId: string; packageId: string | null; kind: 'purchase' | 'renewal'; status: 'paid' | 'action_required'; amountIdr: number; packageName: string; cpu: number; memoryMb: number; diskMb: number; paymentReference: string; periodStart: string; periodEnd: string; createdAt: string };
+export type Subscription = { id: string; userId: string; serverId: string; packageId: string | null; packageName: string; priceIdr: number; cpu: number; memoryMb: number; diskMb: number; status: 'provisioning' | 'active' | 'action_required' | 'grace' | 'released' | 'canceled'; currentPeriodStart: string; currentPeriodEnd: string; graceEndsAt: string; resourceReleasedAt: string | null; createdAt: string; updatedAt: string };
+export type PanelUser = { id: string; username: string; role: 'owner' | 'user'; status: 'active' | 'suspended'; mustChangePassword: boolean; createdAt: string; updatedAt: string };
 export type ActionResponse = { server: Server; job: Job };
 
 export type AuditEvent = {

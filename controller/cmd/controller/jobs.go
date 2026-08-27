@@ -48,7 +48,7 @@ func (a *app) executeJob(parent context.Context, item job) {
 		_ = a.store.finishJob(finishCtx, item.ID, map[string]any{}, err)
 		return
 	}
-	transition := map[string]string{"provision": "installing", "start": "starting", "restart": "stopping", "stop": "stopping", "delete": "deleting", "update": "installing"}[item.Action]
+	transition := map[string]string{"provision": "installing", "start": "starting", "restart": "stopping", "stop": "stopping", "delete": "deleting", "release": "deleting", "update": "installing"}[item.Action]
 	if transition != "" {
 		_ = a.store.setObservedState(ctx, item.ServerID, transition, nil)
 	}
@@ -90,6 +90,11 @@ func (a *app) executeJob(parent context.Context, item job) {
 		if err == nil {
 			err = a.store.finalizeDelete(ctx, item.ServerID)
 		}
+	case "release":
+		err = a.agent.serverAction(ctx, item.ServerID, "delete", map[string]any{"purgeData": false}, &result)
+		if err == nil {
+			err = a.store.finalizeRelease(ctx, item.ServerID)
+		}
 	default:
 		err = a.executeFeatureJob(ctx, item, serverItem, &result)
 	}
@@ -102,6 +107,9 @@ func (a *app) executeJob(parent context.Context, item job) {
 			a.recordConsoleEvent(finishCtx, item.ServerID, lifecycleFailureMessage(item.Action, err))
 		}
 		log.Printf("job failed id=%s action=%s server=%s error=%v", item.ID, item.Action, item.ServerID, err)
+	}
+	if item.Action == "provision" {
+		_ = a.store.setSubscriptionProvisionResult(finishCtx, item.ServerID, err)
 	}
 	if finishErr := a.store.finishJob(finishCtx, item.ID, result, err); finishErr != nil {
 		log.Printf("finish job failed id=%s error=%v", item.ID, finishErr)

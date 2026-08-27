@@ -106,12 +106,26 @@ func main() {
 	a := &agent{cfg: cfg, docker: dockerapi.New(cfg.DockerSock)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", a.health)
+	mux.HandleFunc("/v1/node/metrics", a.nodeMetrics)
 	mux.HandleFunc("/v1/servers/", a.server)
 	server := &http.Server{Addr: cfg.Addr, Handler: security(mux), TLSConfig: tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second,
 		WriteTimeout: 15 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	log.Printf("agent listening addr=%s", cfg.Addr)
 	log.Fatal(server.ListenAndServeTLS("", ""))
+}
+
+func (a *agent) nodeMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		method(w)
+		return
+	}
+	out, err := readHostMetrics(a.cfg.DataRoot)
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	write(w, http.StatusOK, out)
 }
 
 func loadTLS(cfg config) (*tls.Config, error) {

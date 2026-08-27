@@ -1,9 +1,9 @@
-# MyPanel V1 Architecture
+# MyPanel V2 Architecture
 
 ## Trust boundaries
 
 - **Web** serves the React application and proxies `/api` to the controller.
-- **Controller** is the public application boundary. It authenticates the owner,
+- **Controller** is the public application boundary. It authenticates owners and users,
   validates every request, stores durable state in PostgreSQL, stores ephemeral
   sessions/rate limits in Redis, and never receives the Docker socket.
 - **Agent** is the privileged node boundary. It is reachable only on the
@@ -24,6 +24,8 @@
    `observed_state`; desired state is never treated as observed state.
 5. The UI receives job/state changes through normal polling and console events
    over an authenticated WebSocket.
+6. Checkout atomically reserves package capacity, port, ownership, subscription,
+   simulated order, and provisioning job under a PostgreSQL advisory lock.
 
 ## Frontend structure
 
@@ -45,9 +47,10 @@
   timestamp. Live Docker output then crosses one persistent agent stream and is
   written immediately, one message at a time, through a backpressured xterm
   queue. Safe SGR and Minecraft color codes are rendered, while
-  cursor/title control sequences are removed. Host-wide telemetry is
-  intentionally presented as unavailable until the controller exposes an
-  authoritative endpoint.
+  cursor/title control sequences are removed. Host-wide telemetry is read by
+  the agent and exposed only to owners through the authenticated capacity API.
+- Navigation is role-aware: customers receive marketplace and subscription
+  views; administrators receive account, package, capacity, and fleet controls.
 
 ## Public contracts
 
@@ -60,6 +63,8 @@
   `status`, `lifecycle`, and `command-result` messages. Browser commands are
   sent as `command` messages.
 - Agent routes are under `/v1/servers/{uuid}` and are not browser-accessible.
+- Every server-scoped controller route resolves authenticated ownership before
+  reading or mutating data. Role-aware UI is convenience, not authorization.
 
 ## Storage and lifecycle
 
@@ -134,6 +139,12 @@
   is removed only when the request explicitly sets `purgeData: true`.
 - Hanya satu job aktif diizinkan per server. Operasi yang bersaing ditolak dan
   browser disconnect tidak membatalkan job yang sedang berjalan.
+- Sessions carry a database-backed version. Suspend, password reset, and
+  password change increment it so existing Redis sessions stop working.
+- A subscription reserves CPU, RAM, disk, and a port for 30 days. Expiry stops
+  the server and enters seven days of grace. After grace, a durable release job
+  removes the container and port reservation but retains server data; retained
+  disk remains counted. Reactivation allocates a new port around that data.
 
 ## Deployment
 

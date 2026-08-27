@@ -185,6 +185,8 @@ services:
       PORT_RANGE_END: ${PORT_RANGE_END:-25749}
       NODE_MEMORY_MB: ${NODE_MEMORY_MB:-12288}
       NODE_CPUS: ${NODE_CPUS:-7}
+      NODE_DISK_MB: ${NODE_DISK_MB:-102400}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
     volumes:
       - mtls-certs:/run/mypanel-certs:ro
       - controller-secrets:/run/mypanel-secrets:ro

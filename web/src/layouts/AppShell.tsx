@@ -1,4 +1,4 @@
-import { Activity, Bell, Boxes, ChevronRight, DatabaseBackup, FileText, Gauge, Languages, LogOut, Menu, Monitor, Moon, Server as ServerIcon, Settings, Sun, Terminal, X, Zap } from 'lucide-react';
+import { Activity, Bell, Boxes, ChevronRight, CreditCard, DatabaseBackup, FileText, Gauge, Languages, LogOut, Menu, Monitor, Moon, Package, Server as ServerIcon, Settings, ShoppingCart, Sun, Terminal, Users, X, Zap } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n';
@@ -20,6 +20,14 @@ export function AppShell({ children, servers, session, onLogout }: { children: R
   const globalNav = [
     { to: '/dashboard', label: tr('Dashboard', 'Dashboard'), icon: Gauge },
     { to: '/servers', label: tr('Server', 'Servers'), icon: ServerIcon },
+    ...(session.role === 'user' ? [{ to: '/marketplace', label: tr('Beli Server', 'Buy Server'), icon: ShoppingCart }] : []),
+    { to: '/billing', label: tr('Pesanan', 'Orders'), icon: CreditCard },
+    ...(session.role === 'owner' ? [
+      { to: '/admin/users', label: tr('User', 'Users'), icon: Users },
+      { to: '/admin/packages', label: tr('Paket', 'Packages'), icon: Package },
+      { to: '/admin/capacity', label: tr('Kapasitas', 'Capacity'), icon: Monitor },
+      { to: '/activity', label: tr('Log Aktivitas', 'Activity Log'), icon: Activity },
+    ] : []),
   ];
   const contextualNav = activeServer ? [
     { to: serverPath('console'), label: tr('Console', 'Console'), icon: Terminal },
@@ -27,7 +35,6 @@ export function AppShell({ children, servers, session, onLogout }: { children: R
     { to: serverPath('backups'), label: tr('Backup', 'Backups'), icon: DatabaseBackup },
     { to: serverPath('schedules'), label: tr('Jadwal', 'Schedules'), icon: Zap },
     { to: serverPath('settings'), label: tr('Pengaturan', 'Settings'), icon: Settings },
-    { to: '/activity', label: tr('Log Aktivitas', 'Activity Log'), icon: Activity },
   ] : [];
   const nav = [...globalNav, ...contextualNav];
   const crumbs = breadcrumb(location.pathname, activeServer?.name, tr);
@@ -35,10 +42,10 @@ export function AppShell({ children, servers, session, onLogout }: { children: R
     <aside className="sidebar" aria-label={tr('Navigasi utama', 'Main navigation')}>
       <button className="brand" onClick={() => navigate('/dashboard')} aria-label="MyPanel dashboard"><span className="brand-mark"><Boxes /></span><span className="brand-copy">MyPanel<small>v2</small></span></button>
       <nav>{nav.map(({ to, label, icon: Icon }) => <NavLink key={label} to={to} end={to === '/servers'} title={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /><span>{label}</span></NavLink>)}</nav>
-      <section className="node-mini" aria-label={tr('Informasi node', 'Node information')}>
+      {session.role === 'owner' && <section className="node-mini" aria-label={tr('Informasi node', 'Node information')}>
         <div><Monitor /><span><b>local</b><small>{tr('Telemetri belum tersedia', 'Telemetry unavailable')}</small></span></div>
         <dl><div><dt>CPU</dt><dd>{allocated.cpu} vCPU</dd></div><div><dt>RAM</dt><dd>{formatAllocation(allocated.memory)}</dd></div><div><dt>Disk</dt><dd>{formatAllocation(allocated.disk)}</dd></div></dl>
-      </section>
+      </section>}
     </aside>
     <div className="app-column">
       <header className="topbar">
@@ -65,6 +72,11 @@ export function AppShell({ children, servers, session, onLogout }: { children: R
 function breadcrumb(path: string, serverName: string | undefined, tr: (id: string, en: string) => string) {
   if (path === '/dashboard') return [tr('Dashboard', 'Dashboard')];
   if (path === '/activity') return [tr('Log Aktivitas', 'Activity Log')];
+  if (path === '/marketplace') return [tr('Beli Server', 'Buy Server')];
+  if (path === '/billing') return [tr('Pesanan', 'Orders')];
+  if (path === '/admin/users') return [tr('Admin', 'Admin'), tr('User', 'Users')];
+  if (path === '/admin/packages') return [tr('Admin', 'Admin'), tr('Paket', 'Packages')];
+  if (path === '/admin/capacity') return [tr('Admin', 'Admin'), tr('Kapasitas', 'Capacity')];
   const parts = path.split('/').filter(Boolean);
   if (parts[0] !== 'servers') return ['MyPanel'];
   if (parts.length === 1) return [tr('Server', 'Servers')];

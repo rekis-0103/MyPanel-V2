@@ -53,7 +53,7 @@ func (s *sessionStore) create(ctx context.Context, user userRecord) (string, ses
 	if err != nil {
 		return "", sessionRecord{}, err
 	}
-	record := sessionRecord{UserID: user.ID, Username: user.Username, Role: user.Role, CSRFToken: csrf}
+	record := sessionRecord{UserID: user.ID, Username: user.Username, Role: user.Role, SessionVersion: user.SessionVersion, MustChangePassword: user.MustChangePassword, CSRFToken: csrf}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return "", sessionRecord{}, err
@@ -112,6 +112,22 @@ return {first, redis.call('TTL', KEYS[1]), second, redis.call('TTL', KEYS[2])}
 func (s *sessionStore) clearLoginLimit(ctx context.Context, ip, username string) {
 	digest := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(username))))
 	_ = s.redis.Del(ctx, "login:user:"+ip+":"+hex.EncodeToString(digest[:8])).Err()
+}
+
+func (s *sessionStore) allowRegistration(ctx context.Context, ip string) (bool, time.Duration, error) {
+	key := "register:ip:" + ip
+	result, err := s.redis.Eval(ctx, `
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return {count, redis.call('TTL', KEYS[1])}
+`, []string{key}, 3600).Int64Slice()
+	if err != nil {
+		return false, 0, err
+	}
+	if len(result) != 2 {
+		return false, 0, errors.New("invalid registration rate-limit response")
+	}
+	return result[0] <= 5, time.Duration(max(int64(0), result[1])) * time.Second, nil
 }
 
 func sessionKey(token string) string {
@@ -198,7 +214,7 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := a.store.findUser(r.Context(), input.Username)
-	if err != nil || !verifyPassword(user.PasswordHash, input.Password) {
+	if err != nil || user.Status != "active" || !verifyPassword(user.PasswordHash, input.Password) {
 		_ = a.store.audit(r.Context(), nil, "auth.login_failed", "user", "", ip, map[string]any{"username": input.Username})
 		write(w, http.StatusUnauthorized, apiError{Error: "invalid credentials", Code: "invalid_credentials", RequestID: requestID(r.Context())})
 		return
@@ -209,10 +225,9 @@ func (a *app) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.sessions.clearLoginLimit(r.Context(), ip, input.Username)
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteStrictMode, MaxAge: int(a.cfg.SessionTTL.Seconds()), Secure: a.cfg.CookieSecure})
+	a.setSessionCookie(w, token)
 	_ = a.store.audit(r.Context(), &user.ID, "auth.login", "user", user.ID, ip, map[string]any{})
-	write(w, http.StatusOK, map[string]any{"username": session.Username, "role": session.Role, "csrfToken": session.CSRFToken})
+	write(w, http.StatusOK, sessionResponse(session))
 }
 
 func (a *app) logout(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +249,7 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) me(w http.ResponseWriter, r *http.Request) {
 	session, _ := currentSession(r.Context())
-	write(w, http.StatusOK, map[string]string{"username": session.Username, "role": session.Role, "csrfToken": session.CSRFToken})
+	write(w, http.StatusOK, sessionResponse(session))
 }
 
 func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
@@ -249,14 +264,31 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 			write(w, http.StatusUnauthorized, apiError{Error: "authentication required", Code: "authentication_required", RequestID: requestID(r.Context())})
 			return
 		}
+		user, err := a.store.findUserByID(r.Context(), session.UserID)
+		if err != nil || user.Status != "active" || user.SessionVersion != session.SessionVersion {
+			_ = a.sessions.delete(r.Context(), cookie.Value)
+			write(w, http.StatusUnauthorized, apiError{Error: "authentication required", Code: "authentication_required", RequestID: requestID(r.Context())})
+			return
+		}
+		session.Username = user.Username
+		session.Role = user.Role
+		session.MustChangePassword = user.MustChangePassword
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(session.CSRFToken)) != 1 || !a.validOrigin(r) {
 				write(w, http.StatusForbidden, apiError{Error: "CSRF validation failed", Code: "csrf_failed", RequestID: requestID(r.Context())})
 				return
 			}
 		}
+		if session.MustChangePassword && r.URL.Path != "/api/v1/auth/me" && r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/auth/change-password" {
+			write(w, http.StatusForbidden, apiError{Error: "password change required", Code: "password_change_required", RequestID: requestID(r.Context())})
+			return
+		}
 		next(w, r.WithContext(context.WithValue(r.Context(), sessionContextKey{}, session)))
 	}
+}
+
+func (a *app) setSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: int(a.cfg.SessionTTL.Seconds()), Secure: a.cfg.CookieSecure})
 }
 
 func currentSession(ctx context.Context) (sessionRecord, bool) {

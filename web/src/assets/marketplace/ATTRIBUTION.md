@@ -8,4 +8,3 @@ The marketplace uses the following icons from [Game-icons.net](https://game-icon
 - `cut-diamond.svg`: “Cut diamond” by Lorc
 - `feather.svg`: “Feather” by Lorc
 - `crystal-growth.svg`: “Crystal growth” by Lorc
-

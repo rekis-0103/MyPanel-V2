@@ -1,6 +1,6 @@
 import { LockKeyhole, Server as ServerIcon } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError, setSession as setApiSession } from './api';
 import { ActionButton } from './components/ui/ActionButton';
 import { PageErrorBoundary } from './components/ui/States';
@@ -15,12 +15,13 @@ import { Schedules } from './pages/Schedules';
 import { ServerSettings } from './pages/ServerSettings';
 import { ServersPage } from './pages/Servers';
 import { AdminCapacity, AdminPackages, AdminUsers, Billing, Marketplace } from './pages/Hosting';
+import { Landing } from './pages/Landing';
 import type { ActionResponse, Runtime, Server, Session } from './types';
 
 const ConsolePage = lazy(() => import('./pages/Console').then((module) => ({ default: module.Console })));
 
 export function App() {
-  const { tr } = useI18n(); const { showToast } = useToast(); const navigate = useNavigate();
+  const { tr } = useI18n(); const { showToast } = useToast(); const navigate = useNavigate(); const location = useLocation();
   const [session, setCurrentSession] = useState<Session | null | undefined>(undefined); const [servers, setServers] = useState<Server[]>([]); const [catalog, setCatalog] = useState<Runtime[]>([]); const [busy, setBusy] = useState(false);
   const signOut = useCallback(() => { setApiSession(null); setCurrentSession(null); setServers([]); }, []);
   const handleError = useCallback((value: unknown) => { if (value instanceof ApiError && value.status === 401) { signOut(); return; } showToast(value instanceof Error ? value.message : tr('Terjadi kesalahan yang tidak diketahui.', 'An unknown error occurred.'), 'error'); }, [showToast, signOut, tr]);
@@ -30,8 +31,12 @@ export function App() {
   const act = async (server: Server, action: string) => { setBusy(true); try { await api<ActionResponse>(`/api/v1/servers/${server.id}/actions`, { method: 'POST', body: JSON.stringify({ action }) }); showToast(tr(`${action} masuk ke antrean.`, `${action} queued.`), 'success'); await loadServers(); } catch (error) { handleError(error); } finally { setBusy(false); } };
   const remove = async (server: Server, purgeData: boolean) => { setBusy(true); try { await api<ActionResponse>(`/api/v1/servers/${server.id}`, { method: 'DELETE', body: JSON.stringify({ purgeData }) }); showToast(tr('Penghapusan masuk ke antrean.', 'Deletion queued.'), 'success'); navigate('/servers'); await loadServers(); } catch (error) { handleError(error); } finally { setBusy(false); } };
   const notify = useCallback((message: string, variant: 'success' | 'error' | 'info' | 'warning' = 'info') => showToast(message, variant), [showToast]);
-  if (session === undefined) return <LoadingScreen />;
-  if (!session) return <Login onLogin={() => window.location.reload()} />;
+  if (session === undefined) return location.pathname === '/' ? <Landing /> : <LoadingScreen />;
+  if (!session) return <Routes>
+    <Route index element={<Landing />} />
+    <Route path="login" element={<Login onLogin={() => window.location.reload()} />} />
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>;
   if (session.mustChangePassword) return <ChangePassword session={session} onDone={signOut} onError={handleError} />;
   return <AppShell servers={servers} session={session} onLogout={async () => { try { await api('/api/v1/auth/logout', { method: 'POST' }); } finally { signOut(); } }}><Routes>
     <Route index element={<Navigate to="/dashboard" replace />} />

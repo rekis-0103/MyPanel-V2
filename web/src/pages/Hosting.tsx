@@ -8,17 +8,99 @@ import { MetricBar } from '../components/ui/MetricBar';
 import { useI18n } from '../i18n';
 import { formatBytes, formatDate } from '../format';
 import type { Capacity, HostingPackage, Order, PanelUser, Runtime, Subscription } from '../types';
+import grassIcon from '../assets/marketplace/grass.svg';
+import anvilIcon from '../assets/marketplace/anvil.svg';
+import goldIcon from '../assets/marketplace/gold-bar.svg';
+import diamondIcon from '../assets/marketplace/cut-diamond.svg';
+import featherIcon from '../assets/marketplace/feather.svg';
+import crystalIcon from '../assets/marketplace/crystal-growth.svg';
 
 const idr = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 });
 
+const marketplaceIcons = { grass: grassIcon, anvil: anvilIcon, gold: goldIcon, diamond: diamondIcon, feather: featherIcon, crystal: crystalIcon } as const;
+const packageLooks: Record<string, { icon: keyof typeof marketplaceIcons; theme: string }> = {
+  starter: { icon: 'grass', theme: 'starter' },
+  iron: { icon: 'anvil', theme: 'iron' },
+  gold: { icon: 'gold', theme: 'gold' },
+  diamond: { icon: 'diamond', theme: 'diamond' },
+};
+const fallbackVersions = [
+  { id: '26.2', java: 25 as const },
+  { id: '26.1', java: 25 as const },
+  { id: '1.21.11', java: 21 as const },
+  { id: '1.21.4', java: 21 as const },
+  { id: '1.21.1', java: 21 as const },
+];
+
+function packageLook(slug: string) {
+  return packageLooks[slug.toLowerCase()] ?? packageLooks.starter;
+}
+
+function runtimeIcon(runtime: Runtime) {
+  return marketplaceIcons[runtime.icon ?? 'grass'];
+}
+
 export function Marketplace({ catalog, reloadServers, notify, onError }: { catalog: Runtime[]; reloadServers: () => Promise<void>; notify: (message: string, variant?: 'success' | 'error' | 'info' | 'warning') => void; onError: (error: unknown) => void }) {
-  const { tr } = useI18n(); const [packages, setPackages] = useState<HostingPackage[] | null>(null); const [capacity, setCapacity] = useState<Capacity | null>(null); const [selected, setSelected] = useState<HostingPackage | null>(null); const [busy, setBusy] = useState(false);
+  const { tr } = useI18n();
+  const [packages, setPackages] = useState<HostingPackage[] | null>(null);
+  const [capacity, setCapacity] = useState<Capacity | null>(null);
+  const [selected, setSelected] = useState<HostingPackage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [runtimeId, setRuntimeId] = useState('');
+  const [version, setVersion] = useState('');
   const load = useCallback(() => Promise.all([api<HostingPackage[]>('/api/v1/packages'), api<Capacity>('/api/v1/capacity')]).then(([p, c]) => { setPackages(p); setCapacity(c); }).catch(onError), [onError]);
   useEffect(() => { load(); }, [load]);
-  const checkout = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!selected) return; setBusy(true); const data = new FormData(event.currentTarget); try { await api('/api/v1/checkout', { method: 'POST', body: JSON.stringify({ packageId: selected.id, idempotencyKey: crypto.randomUUID(), name: data.get('name'), runtime: data.get('runtime'), version: data.get('version'), javaVersion: Number(data.get('javaVersion')) }) }); notify(tr('Pembayaran simulasi berhasil dan provisioning dimulai.', 'Simulated payment succeeded and provisioning started.'), 'success'); setSelected(null); await Promise.all([load(), reloadServers()]); } catch (error) { onError(error); } finally { setBusy(false); } };
+  const selectedRuntime = catalog.find((runtime) => runtime.id === runtimeId) ?? catalog[0];
+  const versions = selectedRuntime?.versions?.length ? selectedRuntime.versions : fallbackVersions;
+  const selectedVersion = versions.find((item) => item.id === version) ?? versions[0];
+
+  useEffect(() => {
+    if (!selected || catalog.length === 0) return;
+    const firstRuntime = catalog[0];
+    const initialVersions = firstRuntime.versions?.length ? firstRuntime.versions : fallbackVersions;
+    setRuntimeId(firstRuntime.id);
+    setVersion(initialVersions[0].id);
+  }, [selected, catalog]);
+
+  const chooseRuntime = (runtime: Runtime) => {
+    const runtimeVersions = runtime.versions?.length ? runtime.versions : fallbackVersions;
+    setRuntimeId(runtime.id);
+    setVersion(runtimeVersions[0].id);
+  };
+
+  const checkout = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected || !selectedRuntime || !selectedVersion) return;
+    setBusy(true);
+    const data = new FormData(event.currentTarget);
+    try {
+      await api('/api/v1/checkout', { method: 'POST', body: JSON.stringify({ packageId: selected.id, idempotencyKey: crypto.randomUUID(), name: data.get('name'), runtime: selectedRuntime.id, version: selectedVersion.id, javaVersion: selectedVersion.java }) });
+      notify(tr('Pembayaran simulasi berhasil dan provisioning dimulai.', 'Simulated payment succeeded and provisioning started.'), 'success');
+      setSelected(null);
+      await Promise.all([load(), reloadServers()]);
+    } catch (error) { onError(error); } finally { setBusy(false); }
+  };
   return <div className="page-stack"><div className="page-heading"><div><p className="eyebrow">MARKETPLACE</p><h1>{tr('Beli Server', 'Buy a Server')}</h1><p>{tr('Pilih paket. Pembayaran hanya simulasi dan tidak memproses uang nyata.', 'Choose a package. Payment is simulated and never processes real money.')}</p></div></div>
-    {packages === null ? <section className="surface"><Skeleton lines={4} /></section> : packages.length === 0 ? <section className="surface"><EmptyState icon={Boxes} title={tr('Belum ada paket aktif', 'No active packages')} description={tr('Administrator perlu mengaktifkan paket sebelum checkout tersedia.', 'An administrator must activate a package before checkout is available.')} /></section> : <div className="package-grid">{packages.map((item) => { const available = capacity?.packageAvailability[item.id] ?? false; return <article className={`surface package-card ${available ? '' : 'unavailable-card'}`} key={item.id}><div className="package-icon"><Boxes /></div><h2>{item.name}</h2><p>{item.description}</p><strong>{idr.format(item.priceIdr)}<small>/30 hari</small></strong><dl><div><Cpu /><dt>{item.cpu} vCPU</dt></div><div><MemoryStick /><dt>{formatBytes(item.memoryMb * 1024 * 1024)} RAM</dt></div><div><HardDrive /><dt>{formatBytes(item.diskMb * 1024 * 1024)} disk</dt></div></dl><ActionButton icon={ShoppingCart} disabled={!available} onClick={() => setSelected(item)}>{available ? tr('Pilih paket', 'Choose package') : tr('Kapasitas tidak cukup', 'Insufficient capacity')}</ActionButton></article>; })}</div>}
-    <Modal open={!!selected} onClose={() => !busy && setSelected(null)} title={tr(`Checkout ${selected?.name ?? ''}`, `Checkout ${selected?.name ?? ''}`)}><form className="form-stack" onSubmit={checkout}><div className="simulated-payment"><Check /><span><b>{tr('Pembayaran simulasi instan', 'Instant simulated payment')}</b><small>{selected && idr.format(selected.priceIdr)} · 30 {tr('hari', 'days')}</small></span></div><label>{tr('Nama server', 'Server name')}<input name="name" required maxLength={48} /></label><div className="form-row"><label>Runtime<select name="runtime">{catalog.map((runtime) => <option key={runtime.id} value={runtime.id}>{runtime.name}</option>)}</select></label><label>Java<select name="javaVersion" defaultValue="21"><option value="21">Java 21</option><option value="25">Java 25</option></select></label></div><label>{tr('Versi Minecraft', 'Minecraft version')}<input name="version" defaultValue="1.21.4" required /></label><p className="form-note">{tr('Dengan konfirmasi, order simulasi langsung dibayar dan resource dicadangkan.', 'Confirmation immediately pays the simulated order and reserves resources.')}</p><ActionButton type="submit" loading={busy}>{tr('Bayar simulasi & buat server', 'Simulate payment & create server')}</ActionButton></form></Modal>
+    {packages === null ? <section className="surface"><Skeleton lines={4} /></section> : packages.length === 0 ? <section className="surface"><EmptyState icon={Boxes} title={tr('Belum ada paket aktif', 'No active packages')} description={tr('Administrator perlu mengaktifkan paket sebelum checkout tersedia.', 'An administrator must activate a package before checkout is available.')} /></section> : <div className="package-grid">{packages.map((item) => {
+      const available = capacity?.packageAvailability[item.id] ?? false;
+      const look = packageLook(item.slug);
+      return <article className={`surface package-card package-${look.theme} ${available ? '' : 'unavailable-card'}`} key={item.id}>
+        <div className="package-card-top"><div className="package-icon"><img src={marketplaceIcons[look.icon]} alt="" /></div><span>{item.cpu} vCPU</span></div>
+        <h2>{item.name}</h2><p>{item.description}</p><strong>{idr.format(item.priceIdr)}<small>/30 hari</small></strong>
+        <dl><div><Cpu /><dt>{item.cpu} vCPU</dt></div><div><MemoryStick /><dt>{formatBytes(item.memoryMb * 1024 * 1024)} RAM</dt></div><div><HardDrive /><dt>{formatBytes(item.diskMb * 1024 * 1024)} disk</dt></div></dl>
+        <ActionButton icon={ShoppingCart} disabled={!available} onClick={() => setSelected(item)}>{available ? tr('Pilih paket', 'Choose package') : tr('Kapasitas tidak cukup', 'Insufficient capacity')}</ActionButton>
+      </article>;
+    })}</div>}
+    <Modal open={!!selected} onClose={() => !busy && setSelected(null)} title={tr(`Checkout ${selected?.name ?? ''}`, `Checkout ${selected?.name ?? ''}`)}>
+      <form className="form-stack checkout-form" onSubmit={checkout}>
+        <div className="simulated-payment"><Check /><span><b>{tr('Pembayaran simulasi instan', 'Instant simulated payment')}</b><small>{selected && idr.format(selected.priceIdr)} · 30 {tr('hari', 'days')}</small></span></div>
+        <label>{tr('Nama server', 'Server name')}<input name="name" required maxLength={48} autoComplete="off" /></label>
+        <fieldset className="runtime-picker"><legend>{tr('Jenis server', 'Server type')}</legend><div>{catalog.map((runtime) => <button type="button" key={runtime.id} className={runtime.id === selectedRuntime?.id ? 'selected' : ''} aria-pressed={runtime.id === selectedRuntime?.id} onClick={() => chooseRuntime(runtime)}><span><img src={runtimeIcon(runtime)} alt="" /></span>{runtime.name}</button>)}</div></fieldset>
+        <div className="form-row"><label>{tr('Versi Minecraft', 'Minecraft version')}<select name="version" value={selectedVersion?.id ?? ''} onChange={(event) => setVersion(event.target.value)}>{versions.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}</select></label><label>Java<div className="java-version-display">Java {selectedVersion?.java ?? 21}<small>{tr('Dipilih otomatis', 'Selected automatically')}</small></div></label></div>
+        <p className="form-note">{tr('Versi Java mengikuti kebutuhan versi Minecraft dan diverifikasi ulang oleh server.', 'Java follows the Minecraft version requirement and is verified again by the server.')}</p>
+        <ActionButton type="submit" loading={busy} disabled={!selectedRuntime}>{tr('Bayar simulasi & buat server', 'Simulate payment & create server')}</ActionButton>
+      </form>
+    </Modal>
   </div>;
 }
 

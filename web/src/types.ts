@@ -82,7 +82,8 @@ export type MinecraftVersion = { id: string; java: 21 | 25 };
 export type Runtime = { id: string; name: string; java: number; javaVersions: Array<21 | 25>; icon?: 'grass' | 'feather' | 'crystal' | 'anvil'; versions?: MinecraftVersion[] };
 export type Session = { userId: string; username: string; role: 'owner' | 'user'; mustChangePassword: boolean; csrfToken: string };
 
-export type HostingPackage = { id: string; slug: string; name: string; description: string; priceIdr: number; cpu: number; memoryMb: number; diskMb: number; sortOrder: number; active: boolean; createdAt: string; updatedAt: string };
+export type PackageIcon = 'grass' | 'anvil' | 'gold' | 'diamond' | 'feather' | 'crystal';
+export type HostingPackage = { id: string; slug: string; name: string; description: string; priceIdr: number; cpu: number; memoryMb: number; diskMb: number; sortOrder: number; active: boolean; themeColor: string; icon: PackageIcon; isPopular: boolean; isRecommended: boolean; createdAt: string; updatedAt: string };
 export type CapacityNumbers = { cpu: number; memoryMb: number; diskMb: number; ports: number };
 export type Capacity = { total?: CapacityNumbers; reserved?: CapacityNumbers; available: CapacityNumbers; packageAvailability: Record<string, boolean>; host?: { cpu: number; memoryBytes: number; memoryAvailableBytes: number; diskBytes: number; diskAvailableBytes: number; uptimeSeconds: number }; hostUnavailable?: boolean };
 export type Order = { id: string; userId: string; serverId: string; subscriptionId: string; packageId: string | null; kind: 'purchase' | 'renewal'; status: 'paid' | 'action_required'; amountIdr: number; packageName: string; cpu: number; memoryMb: number; diskMb: number; paymentReference: string; periodStart: string; periodEnd: string; createdAt: string };

@@ -114,6 +114,11 @@ memilih paket bertema Starter, Iron, Gold, atau Diamond, lalu checkout simulasi
 membuat server, order, subscription, alokasi port, dan job provisioning dalam
 satu transaksi. Tidak ada payment gateway atau uang nyata.
 
+Owner dapat mengubah warna tema dan logo paket dari halaman Paket Hosting serta
+memberi penanda **Paling laris** dan/atau **Rekomendasi**. Logo dipilih dari
+katalog aset lokal yang sudah diatribusikan sehingga marketplace tidak memuat
+gambar pihak ketiga pada saat runtime.
+
 Saat checkout, user memilih runtime dan versi Minecraft dari katalog. Java
 ditetapkan otomatis: Minecraft `26.x` memakai Java 25, sedangkan versi yang lebih
 lama pada katalog memakai Java 21. Controller menghitung ulang pilihan ini agar

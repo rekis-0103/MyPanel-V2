@@ -52,7 +52,10 @@ sudah divalidasi ke image yang dikonfigurasi operator.
 
 - `GET /api/v1/packages` — paket aktif; owner dapat memakai `?all=1`.
 - `POST /api/v1/packages`, `PUT|DELETE /api/v1/packages/{id}` — kelola paket,
-  khusus owner.
+  khusus owner. Payload create/update juga menerima `themeColor` berupa warna
+  hex `#RRGGBB`, `icon` dari katalog `grass|anvil|gold|diamond|feather|crystal`,
+  serta boolean `isPopular` dan `isRecommended`. Nilai ini dikembalikan pada
+  respons paket publik untuk membentuk tampilan dan label marketplace.
 - `GET /api/v1/capacity` — user menerima sisa kapasitas jual dan availability
   paket; owner juga menerima total, reserved, dan telemetri host.
 - `POST /api/v1/checkout` — khusus user; membutuhkan `packageId`, UUID

@@ -57,8 +57,31 @@ func TestHostingPackageValidationAndNormalization(t *testing.T) {
 	if p.Slug != "iron" || p.Name != "Iron" || p.Description != "Two GiB" {
 		t.Fatalf("package was not normalized: %#v", p)
 	}
+	if p.ThemeColor != "#3FB950" || p.Icon != "grass" {
+		t.Fatalf("package presentation defaults were not applied: %#v", p)
+	}
 	p.MemoryMB = 512
 	if validatePackage(p) == nil {
 		t.Fatal("undersized package accepted")
+	}
+}
+
+func TestHostingPackagePresentationValidation(t *testing.T) {
+	p := hostingPackage{Slug: "custom", Name: "Custom", PriceIDR: 1000, CPU: 1, MemoryMB: 1024, DiskMB: 1024, ThemeColor: " #58c7df ", Icon: " DIAMOND ", IsPopular: true, Recommended: true}
+	normalizePackage(&p)
+	if err := validatePackage(p); err != nil {
+		t.Fatalf("valid presentation rejected: %v", err)
+	}
+	if p.ThemeColor != "#58C7DF" || p.Icon != "diamond" {
+		t.Fatalf("presentation was not normalized: %#v", p)
+	}
+	p.ThemeColor = "red; background:url(example)"
+	if validatePackage(p) == nil {
+		t.Fatal("unsafe theme color accepted")
+	}
+	p.ThemeColor = "#58C7DF"
+	p.Icon = "https://example.com/tracker.svg"
+	if validatePackage(p) == nil {
+		t.Fatal("external icon URL accepted")
 	}
 }

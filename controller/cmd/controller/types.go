@@ -122,6 +122,10 @@ type hostingPackage struct {
 	DiskMB      int       `json:"diskMb"`
 	SortOrder   int       `json:"sortOrder"`
 	Active      bool      `json:"active"`
+	ThemeColor  string    `json:"themeColor"`
+	Icon        string    `json:"icon"`
+	IsPopular   bool      `json:"isPopular"`
+	Recommended bool      `json:"isRecommended"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }

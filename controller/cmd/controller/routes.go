@@ -13,18 +13,48 @@ import (
 
 var versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._+\-]{0,31}$`)
 
+type catalogVersion struct {
+	ID   string `json:"id"`
+	Java int    `json:"java"`
+}
+
+var supportedMinecraftVersions = []catalogVersion{
+	{ID: "26.2", Java: 25},
+	{ID: "26.1.1", Java: 25},
+	{ID: "26.1", Java: 25},
+	{ID: "1.21.11", Java: 21},
+	{ID: "1.21.10", Java: 21},
+	{ID: "1.21.8", Java: 21},
+	{ID: "1.21.5", Java: 21},
+	{ID: "1.21.4", Java: 21},
+	{ID: "1.21.1", Java: 21},
+	{ID: "1.20.6", Java: 21},
+}
+
+func requiredJavaVersion(version string) int {
+	for _, item := range supportedMinecraftVersions {
+		if item.ID == version {
+			return item.Java
+		}
+	}
+	if strings.HasPrefix(version, "26.") {
+		return 25
+	}
+	return 21
+}
+
 func (a *app) catalog(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		method(w)
 		return
 	}
 	write(w, http.StatusOK, []map[string]any{
-		{"id": "vanilla", "name": "Vanilla", "java": 21, "javaVersions": []int{21, 25}},
-		{"id": "paper", "name": "Paper", "java": 21, "javaVersions": []int{21, 25}},
-		{"id": "purpur", "name": "Purpur", "java": 21, "javaVersions": []int{21, 25}},
-		{"id": "fabric", "name": "Fabric", "java": 21, "javaVersions": []int{21, 25}},
-		{"id": "forge", "name": "Forge", "java": 21, "javaVersions": []int{21, 25}},
-		{"id": "neoforge", "name": "NeoForge", "java": 21, "javaVersions": []int{21, 25}},
+		{"id": "vanilla", "name": "Vanilla", "java": 21, "javaVersions": []int{21, 25}, "icon": "grass", "versions": supportedMinecraftVersions},
+		{"id": "paper", "name": "Paper", "java": 21, "javaVersions": []int{21, 25}, "icon": "feather", "versions": supportedMinecraftVersions},
+		{"id": "purpur", "name": "Purpur", "java": 21, "javaVersions": []int{21, 25}, "icon": "crystal", "versions": supportedMinecraftVersions},
+		{"id": "fabric", "name": "Fabric", "java": 21, "javaVersions": []int{21, 25}, "icon": "grass", "versions": supportedMinecraftVersions},
+		{"id": "forge", "name": "Forge", "java": 21, "javaVersions": []int{21, 25}, "icon": "anvil", "versions": supportedMinecraftVersions},
+		{"id": "neoforge", "name": "NeoForge", "java": 21, "javaVersions": []int{21, 25}, "icon": "crystal", "versions": supportedMinecraftVersions},
 	})
 }
 

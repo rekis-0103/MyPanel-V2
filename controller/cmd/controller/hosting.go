@@ -223,7 +223,9 @@ func validateCheckout(in *checkoutInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Runtime = strings.ToLower(strings.TrimSpace(in.Runtime))
 	in.Version = strings.TrimSpace(in.Version)
-	in.JavaVersion = normalizeJavaVersion(in.JavaVersion)
+	// Checkout is intentionally opinionated: derive Java from the selected
+	// Minecraft version instead of trusting a client-supplied value.
+	in.JavaVersion = requiredJavaVersion(in.Version)
 	if uuid.Validate(in.PackageID) != nil || uuid.Validate(in.IdempotencyKey) != nil || in.Name == "" || len(in.Name) > 48 || !runtimeOK(in.Runtime) || !versionPattern.MatchString(in.Version) || !javaVersionOK(in.JavaVersion) {
 		return errors.New("invalid checkout")
 	}

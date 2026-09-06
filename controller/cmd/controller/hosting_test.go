@@ -26,8 +26,25 @@ func TestValidateCheckoutNormalizesInput(t *testing.T) {
 	if err := validateCheckout(&in); err != nil {
 		t.Fatalf("valid checkout rejected: %v", err)
 	}
-	if in.Name != "Survival" || in.Runtime != "paper" || in.Version != "1.21.4" {
+	if in.Name != "Survival" || in.Runtime != "paper" || in.Version != "1.21.4" || in.JavaVersion != 21 {
 		t.Fatalf("checkout was not normalized: %#v", in)
+	}
+}
+
+func TestValidateCheckoutDerivesJava25ForMinecraft26(t *testing.T) {
+	in := checkoutInput{
+		PackageID:      "11111111-1111-4111-8111-111111111111",
+		IdempotencyKey: "22222222-2222-4222-8222-222222222222",
+		Name:           "Latest",
+		Runtime:        "paper",
+		Version:        "26.2",
+		JavaVersion:    21,
+	}
+	if err := validateCheckout(&in); err != nil {
+		t.Fatalf("valid checkout rejected: %v", err)
+	}
+	if in.JavaVersion != 25 {
+		t.Fatalf("Minecraft 26.x should require Java 25, got Java %d", in.JavaVersion)
 	}
 }
 

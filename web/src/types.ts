@@ -78,7 +78,8 @@ export type Metrics = {
   players: number;
 };
 
-export type Runtime = { id: string; name: string; java: number; javaVersions: Array<21 | 25> };
+export type MinecraftVersion = { id: string; java: 21 | 25 };
+export type Runtime = { id: string; name: string; java: number; javaVersions: Array<21 | 25>; icon?: 'grass' | 'feather' | 'crystal' | 'anvil'; versions?: MinecraftVersion[] };
 export type Session = { userId: string; username: string; role: 'owner' | 'user'; mustChangePassword: boolean; csrfToken: string };
 
 export type HostingPackage = { id: string; slug: string; name: string; description: string; priceIdr: number; cpu: number; memoryMb: number; diskMb: number; sortOrder: number; active: boolean; createdAt: string; updatedAt: string };

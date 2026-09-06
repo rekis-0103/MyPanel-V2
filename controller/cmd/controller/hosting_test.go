@@ -67,7 +67,7 @@ func TestHostingPackageValidationAndNormalization(t *testing.T) {
 }
 
 func TestHostingPackagePresentationValidation(t *testing.T) {
-	p := hostingPackage{Slug: "custom", Name: "Custom", PriceIDR: 1000, CPU: 1, MemoryMB: 1024, DiskMB: 1024, ThemeColor: " #58c7df ", Icon: " DIAMOND ", IsPopular: true, Recommended: true}
+	p := hostingPackage{Slug: "custom", Name: "Custom", PriceIDR: 1000, CPU: 1, MemoryMB: 1024, DiskMB: 1024, ThemeColor: " #58c7df ", Icon: " DIAMOND ", IsPopular: true, IsRecommended: true}
 	normalizePackage(&p)
 	if err := validatePackage(p); err != nil {
 		t.Fatalf("valid presentation rejected: %v", err)

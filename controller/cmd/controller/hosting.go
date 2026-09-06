@@ -24,7 +24,7 @@ type checkoutInput struct {
 
 func scanPackage(row rowScanner) (hostingPackage, error) {
 	var p hostingPackage
-	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.PriceIDR, &p.CPU, &p.MemoryMB, &p.DiskMB, &p.SortOrder, &p.Active, &p.ThemeColor, &p.Icon, &p.IsPopular, &p.Recommended, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.PriceIDR, &p.CPU, &p.MemoryMB, &p.DiskMB, &p.SortOrder, &p.Active, &p.ThemeColor, &p.Icon, &p.IsPopular, &p.IsRecommended, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 
@@ -79,9 +79,9 @@ func normalizePackage(p *hostingPackage) {
 func (s *store) savePackage(ctx context.Context, p hostingPackage) (hostingPackage, error) {
 	if p.ID == "" {
 		p.ID = uuid.NewString()
-		return scanPackage(s.db.QueryRow(ctx, `INSERT INTO hosting_packages(id,slug,name,description,price_idr,cpu,memory_mb,disk_mb,sort_order,active,theme_color,icon,is_popular,is_recommended) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active, p.ThemeColor, p.Icon, p.IsPopular, p.Recommended))
+		return scanPackage(s.db.QueryRow(ctx, `INSERT INTO hosting_packages(id,slug,name,description,price_idr,cpu,memory_mb,disk_mb,sort_order,active,theme_color,icon,is_popular,is_recommended) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active, p.ThemeColor, p.Icon, p.IsPopular, p.IsRecommended))
 	}
-	return scanPackage(s.db.QueryRow(ctx, `UPDATE hosting_packages SET slug=$2,name=$3,description=$4,price_idr=$5,cpu=$6,memory_mb=$7,disk_mb=$8,sort_order=$9,active=$10,theme_color=$11,icon=$12,is_popular=$13,is_recommended=$14,updated_at=now() WHERE id=$1 RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active, p.ThemeColor, p.Icon, p.IsPopular, p.Recommended))
+	return scanPackage(s.db.QueryRow(ctx, `UPDATE hosting_packages SET slug=$2,name=$3,description=$4,price_idr=$5,cpu=$6,memory_mb=$7,disk_mb=$8,sort_order=$9,active=$10,theme_color=$11,icon=$12,is_popular=$13,is_recommended=$14,updated_at=now() WHERE id=$1 RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active, p.ThemeColor, p.Icon, p.IsPopular, p.IsRecommended))
 }
 
 func capacityAvailable(total, used capacitySummary) capacitySummary {

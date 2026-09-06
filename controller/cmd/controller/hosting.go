@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,11 +24,14 @@ type checkoutInput struct {
 
 func scanPackage(row rowScanner) (hostingPackage, error) {
 	var p hostingPackage
-	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.PriceIDR, &p.CPU, &p.MemoryMB, &p.DiskMB, &p.SortOrder, &p.Active, &p.CreatedAt, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description, &p.PriceIDR, &p.CPU, &p.MemoryMB, &p.DiskMB, &p.SortOrder, &p.Active, &p.ThemeColor, &p.Icon, &p.IsPopular, &p.IsRecommended, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }
 
-const packageColumns = `id,slug,name,description,price_idr,cpu,memory_mb,disk_mb,sort_order,active,created_at,updated_at`
+const packageColumns = `id,slug,name,description,price_idr,cpu,memory_mb,disk_mb,sort_order,active,theme_color,icon,is_popular,is_recommended,created_at,updated_at`
+
+var packageColorPattern = regexp.MustCompile(`^#[0-9A-F]{6}$`)
+var packageIcons = map[string]bool{"grass": true, "anvil": true, "gold": true, "diamond": true, "feather": true, "crystal": true}
 
 func (s *store) listPackages(ctx context.Context, includeInactive bool) ([]hostingPackage, error) {
 	rows, err := s.db.Query(ctx, `SELECT `+packageColumns+` FROM hosting_packages WHERE active OR $1 ORDER BY sort_order,name`, includeInactive)
@@ -52,7 +56,7 @@ func (s *store) packageByID(ctx context.Context, id string, activeOnly bool) (ho
 func validatePackage(p hostingPackage) error {
 	p.Name = strings.TrimSpace(p.Name)
 	p.Slug = strings.ToLower(strings.TrimSpace(p.Slug))
-	if !usernamePattern.MatchString(p.Slug) || p.Name == "" || len(p.Name) > 64 || len(p.Description) > 500 || p.PriceIDR < 0 || p.CPU < 1 || p.CPU > 32 || p.MemoryMB < 1024 || p.MemoryMB > 131072 || p.DiskMB < 1024 || p.DiskMB > 1048576 {
+	if !usernamePattern.MatchString(p.Slug) || p.Name == "" || len(p.Name) > 64 || len(p.Description) > 500 || p.PriceIDR < 0 || p.CPU < 1 || p.CPU > 32 || p.MemoryMB < 1024 || p.MemoryMB > 131072 || p.DiskMB < 1024 || p.DiskMB > 1048576 || !packageColorPattern.MatchString(p.ThemeColor) || !packageIcons[p.Icon] {
 		return errors.New("invalid hosting package")
 	}
 	return nil
@@ -62,14 +66,22 @@ func normalizePackage(p *hostingPackage) {
 	p.Name = strings.TrimSpace(p.Name)
 	p.Slug = strings.ToLower(strings.TrimSpace(p.Slug))
 	p.Description = strings.TrimSpace(p.Description)
+	p.ThemeColor = strings.ToUpper(strings.TrimSpace(p.ThemeColor))
+	if p.ThemeColor == "" {
+		p.ThemeColor = "#3FB950"
+	}
+	p.Icon = strings.ToLower(strings.TrimSpace(p.Icon))
+	if p.Icon == "" {
+		p.Icon = "grass"
+	}
 }
 
 func (s *store) savePackage(ctx context.Context, p hostingPackage) (hostingPackage, error) {
 	if p.ID == "" {
 		p.ID = uuid.NewString()
-		return scanPackage(s.db.QueryRow(ctx, `INSERT INTO hosting_packages(id,slug,name,description,price_idr,cpu,memory_mb,disk_mb,sort_order,active) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active))
+		return scanPackage(s.db.QueryRow(ctx, `INSERT INTO hosting_packages(id,slug,name,description,price_idr,cpu,memory_mb,disk_mb,sort_order,active,theme_color,icon,is_popular,is_recommended) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active, p.ThemeColor, p.Icon, p.IsPopular, p.IsRecommended))
 	}
-	return scanPackage(s.db.QueryRow(ctx, `UPDATE hosting_packages SET slug=$2,name=$3,description=$4,price_idr=$5,cpu=$6,memory_mb=$7,disk_mb=$8,sort_order=$9,active=$10,updated_at=now() WHERE id=$1 RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active))
+	return scanPackage(s.db.QueryRow(ctx, `UPDATE hosting_packages SET slug=$2,name=$3,description=$4,price_idr=$5,cpu=$6,memory_mb=$7,disk_mb=$8,sort_order=$9,active=$10,theme_color=$11,icon=$12,is_popular=$13,is_recommended=$14,updated_at=now() WHERE id=$1 RETURNING `+packageColumns, p.ID, p.Slug, p.Name, p.Description, p.PriceIDR, p.CPU, p.MemoryMB, p.DiskMB, p.SortOrder, p.Active, p.ThemeColor, p.Icon, p.IsPopular, p.IsRecommended))
 }
 
 func capacityAvailable(total, used capacitySummary) capacitySummary {
@@ -223,7 +235,9 @@ func validateCheckout(in *checkoutInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	in.Runtime = strings.ToLower(strings.TrimSpace(in.Runtime))
 	in.Version = strings.TrimSpace(in.Version)
-	in.JavaVersion = normalizeJavaVersion(in.JavaVersion)
+	// Checkout is intentionally opinionated: derive Java from the selected
+	// Minecraft version instead of trusting a client-supplied value.
+	in.JavaVersion = requiredJavaVersion(in.Version)
 	if uuid.Validate(in.PackageID) != nil || uuid.Validate(in.IdempotencyKey) != nil || in.Name == "" || len(in.Name) > 48 || !runtimeOK(in.Runtime) || !versionPattern.MatchString(in.Version) || !javaVersionOK(in.JavaVersion) {
 		return errors.New("invalid checkout")
 	}

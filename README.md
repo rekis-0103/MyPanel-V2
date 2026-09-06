@@ -110,9 +110,19 @@ mengubah bind Docker yang tetap menerima koneksi pada seluruh interface.
 ## Alur akun dan hosting simulasi
 
 Owner tetap login dengan akun bootstrap lama. User mendaftar dari halaman login,
-memilih paket, lalu checkout simulasi membuat server, order, subscription,
-alokasi port, dan job provisioning dalam satu transaksi. Tidak ada payment
-gateway atau uang nyata.
+memilih paket bertema Starter, Iron, Gold, atau Diamond, lalu checkout simulasi
+membuat server, order, subscription, alokasi port, dan job provisioning dalam
+satu transaksi. Tidak ada payment gateway atau uang nyata.
+
+Owner dapat mengubah warna tema dan logo paket dari halaman Paket Hosting serta
+memberi penanda **Paling laris** dan/atau **Rekomendasi**. Logo dipilih dari
+katalog aset lokal yang sudah diatribusikan sehingga marketplace tidak memuat
+gambar pihak ketiga pada saat runtime.
+
+Saat checkout, user memilih runtime dan versi Minecraft dari katalog. Java
+ditetapkan otomatis: Minecraft `26.x` memakai Java 25, sedangkan versi yang lebih
+lama pada katalog memakai Java 21. Controller menghitung ulang pilihan ini agar
+nilai Java tidak bergantung pada data yang dikirim browser.
 
 Subscription berlaku 30 hari. Setelah kedaluwarsa, server dihentikan dan masuk
 masa tenggang 7 hari. Jika belum diperpanjang, container, CPU, RAM, dan port
@@ -124,8 +134,9 @@ Saat migrasi multi-user pertama, session Redis lama akan ditolak karena belum
 memiliki versi session. Login ulang sekali dengan credential yang sama; password
 owner tidak berubah.
 
-Saat membuat server, pilih Java 21 untuk kompatibilitas luas atau Java 25 untuk
-server/plugin modern yang sudah mendukungnya. Image dapat dipin melalui
+Saat owner membuat server secara manual, pilih Java 21 untuk kompatibilitas luas
+atau Java 25 untuk server/plugin modern yang sudah mendukungnya. Image dapat
+dipin melalui
 `MINECRAFT_IMAGE_JAVA_21` dan `MINECRAFT_IMAGE_JAVA_25` di `.env`; browser tidak
 dapat memasukkan image arbitrary. Server yang sudah ada dimigrasikan ke Java 21
 agar perilakunya tidak berubah.

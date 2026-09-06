@@ -112,18 +112,22 @@ type publicUser struct {
 }
 
 type hostingPackage struct {
-	ID          string    `json:"id"`
-	Slug        string    `json:"slug"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	PriceIDR    int64     `json:"priceIdr"`
-	CPU         int       `json:"cpu"`
-	MemoryMB    int       `json:"memoryMb"`
-	DiskMB      int       `json:"diskMb"`
-	SortOrder   int       `json:"sortOrder"`
-	Active      bool      `json:"active"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID            string    `json:"id"`
+	Slug          string    `json:"slug"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description"`
+	PriceIDR      int64     `json:"priceIdr"`
+	CPU           int       `json:"cpu"`
+	MemoryMB      int       `json:"memoryMb"`
+	DiskMB        int       `json:"diskMb"`
+	SortOrder     int       `json:"sortOrder"`
+	Active        bool      `json:"active"`
+	ThemeColor    string    `json:"themeColor"`
+	Icon          string    `json:"icon"`
+	IsPopular     bool      `json:"isPopular"`
+	IsRecommended bool      `json:"isRecommended"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type subscription struct {

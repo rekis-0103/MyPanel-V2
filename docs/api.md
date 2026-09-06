@@ -23,8 +23,8 @@ mengirim `X-CSRF-Token`, dan origin browser harus sama dengan `TRUSTED_ORIGIN`.
 
 - `GET /api/v1/health/live` — liveness process.
 - `GET /api/v1/health/ready` — status PostgreSQL, Redis, dan agent.
-- `GET /api/v1/catalog` — runtime Minecraft dan pilihan `javaVersions` yang
-  didukung.
+- `GET /api/v1/catalog` — runtime Minecraft, identifier icon, pilihan
+  `javaVersions`, dan daftar `versions` berbentuk `{id, java}` untuk checkout.
 
 ## Servers dan jobs
 
@@ -52,11 +52,16 @@ sudah divalidasi ke image yang dikonfigurasi operator.
 
 - `GET /api/v1/packages` — paket aktif; owner dapat memakai `?all=1`.
 - `POST /api/v1/packages`, `PUT|DELETE /api/v1/packages/{id}` — kelola paket,
-  khusus owner.
+  khusus owner. Payload create/update juga menerima `themeColor` berupa warna
+  hex `#RRGGBB`, `icon` dari katalog `grass|anvil|gold|diamond|feather|crystal`,
+  serta boolean `isPopular` dan `isRecommended`. Nilai ini dikembalikan pada
+  respons paket publik untuk membentuk tampilan dan label marketplace.
 - `GET /api/v1/capacity` — user menerima sisa kapasitas jual dan availability
   paket; owner juga menerima total, reserved, dan telemetri host.
 - `POST /api/v1/checkout` — khusus user; membutuhkan `packageId`, UUID
-  `idempotencyKey`, nama server, runtime, versi Minecraft, dan Java 21/25.
+  `idempotencyKey`, nama server, runtime, dan versi Minecraft. `javaVersion`
+  diterima untuk kompatibilitas client, tetapi controller selalu menurunkannya
+  kembali dari versi Minecraft (`26.x` ke Java 25, versi sebelumnya ke Java 21).
 - `GET /api/v1/orders` dan `GET /api/v1/subscriptions` — milik user; owner
   melihat seluruh data.
 - `POST /api/v1/subscriptions/{id}/renew` — perpanjangan simulasi 30 hari.

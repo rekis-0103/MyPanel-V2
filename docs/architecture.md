@@ -29,10 +29,11 @@
 
 ## Frontend structure
 
-- React Router exposes stable deep links for dashboard, server list, console,
-  files, backups, schedules, settings, and activity. Server cards enter the
-  console directly; server-specific navigation is only rendered on a server
-  route. Caddy's SPA
+- React Router exposes `/` as the public product landing page and `/login` as
+  the shared owner/user authentication page, alongside stable deep links for
+  dashboard, server list, console, files, backups, schedules, settings, and
+  activity. Server cards enter the console directly; server-specific navigation
+  is only rendered on a server route. Caddy's SPA
   fallback serves `index.html` for direct route access.
 - `App` retains authentication, catalog/server loading, lifecycle actions, and
   polling. Page and layout components consume those operations without

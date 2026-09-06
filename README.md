@@ -109,6 +109,11 @@ mengubah bind Docker yang tetap menerima koneksi pada seluruh interface.
 
 ## Alur akun dan hosting simulasi
 
+Route `/` menampilkan landing page publik dengan ringkasan fitur dan alur
+hosting. Tombol aksi mengarah ke `/login`, tempat owner dapat masuk dan user
+dapat masuk atau membuat akun. Foto landing page berasal dari Unsplash dan
+sumber lengkapnya dicatat di `web/src/assets/landing/ATTRIBUTION.md`.
+
 Owner tetap login dengan akun bootstrap lama. User mendaftar dari halaman login,
 memilih paket bertema Starter, Iron, Gold, atau Diamond, lalu checkout simulasi
 membuat server, order, subscription, alokasi port, dan job provisioning dalam
@@ -157,7 +162,8 @@ pnpm build
 ```
 
 Frontend dev server memakai `pnpm dev` dan mem-proxy `/api` ke controller pada
-`127.0.0.1:8080`. Buka `http://127.0.0.1:5173`; route seperti
+`127.0.0.1:8080`. Buka `http://127.0.0.1:5173` untuk landing page atau
+`http://127.0.0.1:5173/login` untuk autentikasi; route seperti
 `/servers/<id>/console` dapat dibuka langsung dan akan tetap bekerja di image
 Caddy produksi. Untuk validasi deployment, jalankan
 `docker compose config --quiet` sebelum `docker compose up`.

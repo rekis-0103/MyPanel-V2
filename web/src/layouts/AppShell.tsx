@@ -10,10 +10,12 @@ export function AppShell({ children, servers, session, onLogout }: { children: R
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('mypanel.sidebar') === 'collapsed');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => localStorage.getItem('mypanel.theme') === 'light' ? 'light' : 'dark');
   const routeServerId = location.pathname.match(/^\/servers\/([^/]+)/)?.[1];
   const activeServer = servers.find((server) => server.id === routeServerId) ?? null;
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('mypanel.theme', theme); }, [theme]);
+  useEffect(() => { localStorage.setItem('mypanel.sidebar', sidebarCollapsed ? 'collapsed' : 'expanded'); }, [sidebarCollapsed]);
   const serverPath = (page: string) => activeServer ? `/servers/${activeServer.id}/${page}` : '/servers';
   const alerts = servers.filter((server) => server.lastError || server.state === 'error');
   const allocated = servers.reduce((total, server) => ({ cpu: total.cpu + server.cpu, memory: total.memory + server.memoryMb, disk: total.disk + server.diskMb }), { cpu: 0, memory: 0, disk: 0 });
@@ -38,10 +40,11 @@ export function AppShell({ children, servers, session, onLogout }: { children: R
   ] : [];
   const nav = [...globalNav, ...contextualNav];
   const crumbs = breadcrumb(location.pathname, activeServer?.name, tr);
-  return <div className="app-shell">
+  return <div className={sidebarCollapsed ? 'app-shell sidebar-collapsed' : 'app-shell'}>
     <aside className="sidebar" aria-label={tr('Navigasi utama', 'Main navigation')}>
-      <button className="brand" onClick={() => navigate('/dashboard')} aria-label="MyPanel dashboard"><span className="brand-mark"><Boxes /></span><span className="brand-copy">MyPanel<small>v2</small></span></button>
-      <nav>{nav.map(({ to, label, icon: Icon }) => <NavLink key={label} to={to} end={to === '/servers'} title={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /><span>{label}</span></NavLink>)}</nav>
+      <div className="sidebar-head"><button className="brand" onClick={() => navigate('/dashboard')} aria-label="MyPanel dashboard"><span className="brand-mark"><Boxes /></span><span className="brand-copy">MyPanel<small>v2</small></span></button><button className="icon-button sidebar-toggle" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? tr('Tampilkan sidebar', 'Expand sidebar') : tr('Sembunyikan sidebar', 'Collapse sidebar')} title={sidebarCollapsed ? tr('Tampilkan sidebar', 'Expand sidebar') : tr('Sembunyikan sidebar', 'Collapse sidebar')}><Menu /></button></div>
+      <nav className="global-nav">{globalNav.map(({ to, label, icon: Icon }) => <NavLink key={label} to={to} end={to === '/servers'} title={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /><span>{label}</span></NavLink>)}</nav>
+      {activeServer && <section className="server-nav-panel" aria-label={tr(`Menu server ${activeServer.name}`, `${activeServer.name} server menu`)}><header title={activeServer.name}><span className="server-nav-icon"><ServerIcon /></span><div><small>{tr('SERVER AKTIF', 'ACTIVE SERVER')}</small><b>{activeServer.name}</b></div><StatusBadge status={normalizeStatus(activeServer.state)} compact /></header><nav>{contextualNav.map(({ to, label, icon: Icon }) => <NavLink key={label} to={to} title={label} className={({ isActive }) => isActive ? 'active' : ''}><Icon /><span>{label}</span></NavLink>)}</nav></section>}
       {session.role === 'owner' && <section className="node-mini" aria-label={tr('Informasi node', 'Node information')}>
         <div><Monitor /><span><b>local</b><small>{tr('Telemetri belum tersedia', 'Telemetry unavailable')}</small></span></div>
         <dl><div><dt>CPU</dt><dd>{allocated.cpu} vCPU</dd></div><div><dt>RAM</dt><dd>{formatAllocation(allocated.memory)}</dd></div><div><dt>Disk</dt><dd>{formatAllocation(allocated.disk)}</dd></div></dl>

@@ -22,6 +22,8 @@ describe('AppShell contextual navigation', () => {
 
   it('reveals server tools on a server route', () => {
     renderShell('/servers/server-1/console');
+    expect(screen.getByRole('region', { name: 'Menu server BocahSMP' })).toBeInTheDocument();
+    expect(screen.getAllByText('BocahSMP').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: 'Console' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: 'File' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: 'Pengaturan' }).length).toBeGreaterThan(0);
@@ -32,6 +34,13 @@ describe('AppShell contextual navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gunakan mode terang' }));
     expect(document.documentElement.dataset.theme).toBe('light');
     expect(localStorage.getItem('mypanel.theme')).toBe('light');
+  });
+
+  it('persists the collapsed desktop sidebar preference', () => {
+    localStorage.setItem('mypanel.sidebar', 'expanded'); renderShell('/dashboard');
+    fireEvent.click(screen.getByRole('button', { name: 'Sembunyikan sidebar' }));
+    expect(screen.getByRole('button', { name: 'Tampilkan sidebar' })).toBeInTheDocument();
+    expect(localStorage.getItem('mypanel.sidebar')).toBe('collapsed');
   });
 
   it('shows customer navigation without administrator controls', () => {

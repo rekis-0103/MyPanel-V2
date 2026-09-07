@@ -9,6 +9,8 @@ export function Modal({ open, title, children, footer, onClose }: { open: boolea
   useEffect(() => {
     if (!open) return;
     previousFocus.current = document.activeElement as HTMLElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const timer = window.setTimeout(() => dialog.current?.querySelector<HTMLElement>('button, input, select, textarea')?.focus(), 0);
     const keydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCloseRef.current();
@@ -20,7 +22,7 @@ export function Modal({ open, title, children, footer, onClose }: { open: boolea
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', keydown);
-    return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); previousFocus.current?.focus(); };
+    return () => { window.clearTimeout(timer); document.removeEventListener('keydown', keydown); document.body.style.overflow = previousOverflow; previousFocus.current?.focus(); };
   }, [open]);
   if (!open) return null;
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>

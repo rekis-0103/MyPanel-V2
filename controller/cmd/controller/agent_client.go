@@ -152,8 +152,38 @@ func (c *agentClient) deleteFile(ctx context.Context, serverID, filePath string)
 	return c.do(ctx, http.MethodDelete, "/v1/servers/"+url.PathEscape(serverID)+"/files?"+query.Encode(), nil, nil)
 }
 
+func (c *agentClient) createFolder(ctx context.Context, serverID, filePath string) error {
+	return c.do(ctx, http.MethodPost, "/v1/servers/"+url.PathEscape(serverID)+"/files/folders", map[string]string{"path": filePath}, nil)
+}
+
+func (c *agentClient) moveFile(ctx context.Context, serverID, from, to string) error {
+	return c.do(ctx, http.MethodPost, "/v1/servers/"+url.PathEscape(serverID)+"/files/move", map[string]string{"from": from, "to": to}, nil)
+}
+
 func (c *agentClient) deleteBackup(ctx context.Context, serverID, backupID string) error {
 	return c.do(ctx, http.MethodDelete, "/v1/servers/"+url.PathEscape(serverID)+"/backups/"+url.PathEscape(backupID), nil, nil)
+}
+
+func (c *agentClient) downloadBackup(ctx context.Context, serverID, backupID string) (io.ReadCloser, int64, error) {
+	relative, err := url.Parse("/v1/servers/" + url.PathEscape(serverID) + "/backups/" + url.PathEscape(backupID) + "/download")
+	if err != nil {
+		return nil, 0, err
+	}
+	u := *c.baseURL
+	u.Path = path.Join(c.baseURL.Path, relative.Path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	response, err := c.http.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		return nil, 0, fmt.Errorf("agent returned HTTP %d", response.StatusCode)
+	}
+	return response.Body, response.ContentLength, nil
 }
 
 func (c *agentClient) do(ctx context.Context, method, requestPath string, input, output any) error {

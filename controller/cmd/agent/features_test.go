@@ -104,6 +104,48 @@ func TestFileWriteStaysWithinServerRoot(t *testing.T) {
 	}
 }
 
+func TestCreateFolderAndMoveStayWithinServerRoot(t *testing.T) {
+	base := t.TempDir()
+	a := &agent{cfg: config{DataRoot: filepath.Join(base, "servers")}}
+	if err := os.MkdirAll(a.serverPath(testServerID), 0750); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/servers/"+testServerID+"/files/folders", strings.NewReader(`{"path":"plugins/config"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	a.createFolder(recorder, request, testServerID)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("create folder status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if info, err := os.Stat(filepath.Join(a.serverPath(testServerID), "plugins", "config")); err != nil || !info.IsDir() {
+		t.Fatalf("created folder info=%v err=%v", info, err)
+	}
+
+	oldPath := filepath.Join(a.serverPath(testServerID), "plugins", "old.yml")
+	if err := os.WriteFile(oldPath, []byte("enabled: true"), 0640); err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest(http.MethodPost, "/v1/servers/"+testServerID+"/files/move", strings.NewReader(`{"from":"plugins/old.yml","to":"plugins/config/new.yml"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	a.moveFile(recorder, request, testServerID)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("move status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if data, err := os.ReadFile(filepath.Join(a.serverPath(testServerID), "plugins", "config", "new.yml")); err != nil || string(data) != "enabled: true" {
+		t.Fatalf("moved data=%q err=%v", data, err)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/v1/servers/"+testServerID+"/files/move", strings.NewReader(`{"from":"plugins","to":"plugins/nested"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	a.moveFile(recorder, request, testServerID)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("nested move status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestValidateAgentConfig(t *testing.T) {
 	if err := validateAgentConfig(map[string]any{"maxPlayers": float64(20), "onlineMode": true, "jvmOpts": "-XX:+UseG1GC", "extraArgs": "nogui"}); err != nil {
 		t.Fatalf("valid configuration rejected: %v", err)

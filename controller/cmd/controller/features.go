@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -49,6 +50,10 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 		}
 		write(w, http.StatusOK, map[string]string{"logs": stripDockerLogTimestamps(logs)})
 	case "metrics":
+		if len(parts) == 2 && parts[1] == "history" {
+			a.metricHistory(w, r, serverID)
+			return
+		}
 		if r.Method != http.MethodGet {
 			method(w)
 			return
@@ -60,7 +65,7 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 		}
 		write(w, http.StatusOK, state)
 	case "files":
-		a.fileCollection(w, r, serverID)
+		a.fileCollection(w, r, serverID, parts[1:])
 	case "backups":
 		a.backupRoutes(w, r, serverID, parts[1:])
 	case "schedules":
@@ -72,7 +77,83 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 	}
 }
 
-func (a *app) fileCollection(w http.ResponseWriter, r *http.Request, serverID string) {
+func (a *app) metricHistory(w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodGet {
+		method(w)
+		return
+	}
+	resolution := r.URL.Query().Get("resolution")
+	var since time.Time
+	if resolution == "15m" {
+		since = time.Now().Add(-7 * 24 * time.Hour)
+	} else {
+		resolution = "1m"
+		since = time.Now().Add(-24 * time.Hour)
+	}
+	items, err := a.store.metricHistory(r.Context(), serverID, resolution, since)
+	if err != nil {
+		internal(w, r, err)
+		return
+	}
+	write(w, http.StatusOK, map[string]any{"resolution": resolution, "items": items})
+}
+
+func (a *app) fileCollection(w http.ResponseWriter, r *http.Request, serverID string, parts []string) {
+	if len(parts) == 1 && parts[0] == "folders" {
+		if r.Method != http.MethodPost {
+			method(w)
+			return
+		}
+		var input struct {
+			Path string `json:"path"`
+		}
+		if decode(w, r, &input) != nil {
+			return
+		}
+		input.Path = strings.TrimSpace(input.Path)
+		if input.Path == "" || len(input.Path) > 512 {
+			write(w, http.StatusBadRequest, apiError{Error: "invalid folder path", Code: "invalid_file", RequestID: requestID(r.Context())})
+			return
+		}
+		if err := a.agent.createFolder(r.Context(), serverID, input.Path); err != nil {
+			write(w, http.StatusBadGateway, apiError{Error: "node folder operation failed", Code: "node_operation_failed", RequestID: requestID(r.Context())})
+			return
+		}
+		session, _ := currentSession(r.Context())
+		_ = a.store.audit(r.Context(), &session.UserID, "file.folder.create", "server", serverID, clientIP(r), map[string]any{"path": input.Path})
+		write(w, http.StatusCreated, map[string]string{"path": input.Path})
+		return
+	}
+	if len(parts) == 1 && parts[0] == "move" {
+		if r.Method != http.MethodPost {
+			method(w)
+			return
+		}
+		var input struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		}
+		if decode(w, r, &input) != nil {
+			return
+		}
+		input.From, input.To = strings.TrimSpace(input.From), strings.TrimSpace(input.To)
+		if input.From == "" || input.To == "" || len(input.From) > 512 || len(input.To) > 512 {
+			write(w, http.StatusBadRequest, apiError{Error: "invalid move path", Code: "invalid_file", RequestID: requestID(r.Context())})
+			return
+		}
+		if err := a.agent.moveFile(r.Context(), serverID, input.From, input.To); err != nil {
+			write(w, http.StatusBadGateway, apiError{Error: "node move operation failed", Code: "node_operation_failed", RequestID: requestID(r.Context())})
+			return
+		}
+		session, _ := currentSession(r.Context())
+		_ = a.store.audit(r.Context(), &session.UserID, "file.move", "server", serverID, clientIP(r), map[string]any{"from": input.From, "to": input.To})
+		write(w, http.StatusOK, map[string]string{"path": input.To})
+		return
+	}
+	if len(parts) != 0 {
+		notFound(w, r)
+		return
+	}
 	filePath := r.URL.Query().Get("path")
 	if len(filePath) > 512 || strings.ContainsRune(filePath, '\x00') {
 		write(w, http.StatusBadRequest, apiError{Error: "invalid file path", Code: "invalid_file", RequestID: requestID(r.Context())})
@@ -172,19 +253,43 @@ func (a *app) backupRoutes(w http.ResponseWriter, r *http.Request, serverID stri
 		notFound(w, r)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "download" && r.Method == http.MethodGet {
+		if item.Status != "ready" {
+			write(w, http.StatusConflict, apiError{Error: "backup is not ready", Code: "backup_not_ready", RequestID: requestID(r.Context())})
+			return
+		}
+		stream, size, err := a.agent.downloadBackup(r.Context(), serverID, backupID)
+		if err != nil {
+			write(w, http.StatusBadGateway, apiError{Error: "node backup download failed", Code: "node_operation_failed", RequestID: requestID(r.Context())})
+			return
+		}
+		defer stream.Close()
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+safeDownloadName(item.Name)+`.tar.gz"`)
+		if size >= 0 {
+			w.Header().Set("Content-Length", fmt.Sprint(size))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.Copy(w, stream)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "restore" && r.Method == http.MethodPost {
 		if item.Status != "ready" {
 			write(w, http.StatusConflict, apiError{Error: "backup is not ready", Code: "backup_not_ready", RequestID: requestID(r.Context())})
 			return
 		}
-		createdJob, err := a.store.createJob(r.Context(), serverID, "restore", map[string]string{"backupId": backupID})
+		if item.ChecksumSHA256 == nil || len(*item.ChecksumSHA256) != 64 {
+			write(w, http.StatusConflict, apiError{Error: "backup has no verified checksum", Code: "backup_unverified", RequestID: requestID(r.Context())})
+			return
+		}
+		preBackup, createdJob, err := a.store.createRestoreJob(r.Context(), serverID, backupID, *item.ChecksumSHA256)
 		if err != nil {
 			write(w, http.StatusConflict, apiError{Error: "another operation is active", Code: "job_conflict", RequestID: requestID(r.Context())})
 			return
 		}
 		session, _ := currentSession(r.Context())
 		_ = a.store.audit(r.Context(), &session.UserID, "backup.restore", "backup", backupID, clientIP(r), map[string]any{"serverId": serverID})
-		write(w, http.StatusAccepted, map[string]any{"backup": item, "job": createdJob})
+		write(w, http.StatusAccepted, map[string]any{"backup": item, "preRestoreBackup": preBackup, "job": createdJob})
 		return
 	}
 	if len(parts) == 1 && r.Method == http.MethodDelete {
@@ -206,6 +311,22 @@ func (a *app) backupRoutes(w http.ResponseWriter, r *http.Request, serverID stri
 		return
 	}
 	method(w)
+}
+
+func safeDownloadName(value string) string {
+	value = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		if r == ' ' {
+			return '-'
+		}
+		return -1
+	}, value)
+	if value == "" {
+		return "backup"
+	}
+	return value
 }
 
 func (a *app) scheduleRoutes(w http.ResponseWriter, r *http.Request, serverID string, parts []string) {
@@ -262,6 +383,57 @@ func (a *app) scheduleRoutes(w http.ResponseWriter, r *http.Request, serverID st
 		_ = a.store.audit(r.Context(), &session.UserID, "schedule.delete", "schedule", parts[0], clientIP(r), map[string]any{"serverId": serverID})
 		w.WriteHeader(http.StatusNoContent)
 		return
+	}
+	if len(parts) >= 1 && uuid.Validate(parts[0]) == nil {
+		item, err := a.store.getSchedule(r.Context(), serverID, parts[0])
+		if err != nil {
+			notFound(w, r)
+			return
+		}
+		if len(parts) == 2 && parts[1] == "run" && r.Method == http.MethodPost {
+			created, err := a.enqueueSchedule(r.Context(), item)
+			if err != nil {
+				write(w, http.StatusConflict, apiError{Error: "another operation is active", Code: "job_conflict", RequestID: requestID(r.Context())})
+				return
+			}
+			session, _ := currentSession(r.Context())
+			_ = a.store.audit(r.Context(), &session.UserID, "schedule.run", "schedule", item.ID, clientIP(r), map[string]any{"serverId": serverID})
+			write(w, http.StatusAccepted, created)
+			return
+		}
+		if len(parts) == 1 && r.Method == http.MethodPut {
+			var input struct {
+				Name            string         `json:"name"`
+				Action          string         `json:"action"`
+				Payload         map[string]any `json:"payload"`
+				IntervalMinutes int            `json:"intervalMinutes"`
+				Enabled         bool           `json:"enabled"`
+			}
+			if decode(w, r, &input) != nil {
+				return
+			}
+			input.Name = strings.TrimSpace(input.Name)
+			if input.Name == "" || len(input.Name) > 64 || !map[string]bool{"start": true, "stop": true, "restart": true, "backup": true, "command": true}[input.Action] || input.IntervalMinutes < 1 || input.IntervalMinutes > 525600 {
+				write(w, http.StatusBadRequest, apiError{Error: "invalid schedule", Code: "invalid_schedule", RequestID: requestID(r.Context())})
+				return
+			}
+			if input.Action == "command" {
+				command, _ := input.Payload["command"].(string)
+				if !validCommand(command) {
+					write(w, http.StatusBadRequest, apiError{Error: "invalid scheduled command", Code: "invalid_schedule", RequestID: requestID(r.Context())})
+					return
+				}
+			}
+			updated, err := a.store.updateSchedule(r.Context(), serverID, item.ID, input.Name, input.Action, input.Payload, input.IntervalMinutes, input.Enabled)
+			if err != nil {
+				internal(w, r, err)
+				return
+			}
+			session, _ := currentSession(r.Context())
+			_ = a.store.audit(r.Context(), &session.UserID, "schedule.update", "schedule", item.ID, clientIP(r), map[string]any{"serverId": serverID})
+			write(w, http.StatusOK, updated)
+			return
+		}
 	}
 	method(w)
 }
@@ -531,7 +703,8 @@ func (a *app) executeFeatureJob(ctx context.Context, item job, serverItem server
 	switch item.Action {
 	case "backup":
 		var payload struct {
-			BackupID string `json:"backupId"`
+			BackupID   string `json:"backupId"`
+			ScheduleID string `json:"scheduleId"`
 		}
 		if err := json.Unmarshal(item.Payload, &payload); err != nil || uuid.Validate(payload.BackupID) != nil {
 			return errors.New("invalid backup job payload")
@@ -548,13 +721,24 @@ func (a *app) executeFeatureJob(ctx context.Context, item job, serverItem server
 			status = "failed"
 		}
 		_ = a.store.updateBackup(ctx, payload.BackupID, status, output.SizeBytes, output.ChecksumSHA256, err)
+		if err == nil && uuid.Validate(payload.ScheduleID) == nil {
+			if candidates, listErr := a.store.scheduledBackupPruneCandidates(ctx, item.ServerID, payload.ScheduleID, 7); listErr == nil {
+				for _, backupID := range candidates {
+					if a.agent.deleteBackup(ctx, item.ServerID, backupID) == nil {
+						_ = a.store.deleteBackup(ctx, item.ServerID, backupID)
+					}
+				}
+			}
+		}
 		*result = output
 		return err
 	case "restore":
 		var payload struct {
-			BackupID string `json:"backupId"`
+			BackupID       string `json:"backupId"`
+			ExpectedSHA256 string `json:"expectedSha256"`
+			PreBackupID    string `json:"preBackupId"`
 		}
-		if err := json.Unmarshal(item.Payload, &payload); err != nil || uuid.Validate(payload.BackupID) != nil {
+		if err := json.Unmarshal(item.Payload, &payload); err != nil || uuid.Validate(payload.BackupID) != nil || uuid.Validate(payload.PreBackupID) != nil || len(payload.ExpectedSHA256) != 64 {
 			return errors.New("invalid restore job payload")
 		}
 		backupItem, err := a.store.getBackup(ctx, item.ServerID, payload.BackupID)
@@ -562,7 +746,20 @@ func (a *app) executeFeatureJob(ctx context.Context, item job, serverItem server
 			return err
 		}
 		_ = a.store.updateBackup(ctx, payload.BackupID, "restoring", backupItem.SizeBytes, valueOrEmpty(backupItem.ChecksumSHA256), nil)
-		err = a.agent.serverAction(ctx, item.ServerID, "restore", payload, result)
+		var preOutput struct {
+			BackupID       string `json:"backupId"`
+			SizeBytes      int64  `json:"sizeBytes"`
+			ChecksumSHA256 string `json:"checksumSha256"`
+		}
+		err = a.agent.serverAction(ctx, item.ServerID, "backup", map[string]string{"backupId": payload.PreBackupID}, &preOutput)
+		preStatus := "ready"
+		if err != nil {
+			preStatus = "failed"
+		}
+		_ = a.store.updateBackup(ctx, payload.PreBackupID, preStatus, preOutput.SizeBytes, preOutput.ChecksumSHA256, err)
+		if err == nil {
+			err = a.agent.serverAction(ctx, item.ServerID, "restore", map[string]string{"backupId": payload.BackupID, "expectedSha256": payload.ExpectedSHA256}, result)
+		}
 		_ = a.store.updateBackup(ctx, payload.BackupID, "ready", backupItem.SizeBytes, valueOrEmpty(backupItem.ChecksumSHA256), err)
 		if err == nil {
 			_ = a.store.setDesiredState(ctx, item.ServerID, "offline")
@@ -590,21 +787,31 @@ func (a *app) enqueueDueSchedules(ctx context.Context) error {
 		return err
 	}
 	for _, item := range items {
-		if item.Action == "backup" {
-			_, _, _ = a.store.createBackupJob(ctx, item.ServerID, "Scheduled: "+item.Name)
-			continue
-		}
+		_, _ = a.enqueueSchedule(ctx, item)
+	}
+	return nil
+}
+
+func (a *app) enqueueSchedule(ctx context.Context, item schedule) (job, error) {
+	var created job
+	var err error
+	if item.Action == "backup" {
+		_, created, err = a.store.createBackupJobKind(ctx, item.ServerID, "Scheduled: "+item.Name, "scheduled", &item.ID)
+	} else {
 		var payload map[string]any
 		_ = json.Unmarshal(item.Payload, &payload)
 		if item.Action == "start" || item.Action == "restart" {
-			_, _ = a.store.createLifecycleJob(ctx, item.ServerID, item.Action, "running", payload)
+			created, err = a.store.createLifecycleJob(ctx, item.ServerID, item.Action, "running", payload)
 		} else if item.Action == "stop" {
-			_, _ = a.store.createLifecycleJob(ctx, item.ServerID, item.Action, "offline", payload)
+			created, err = a.store.createLifecycleJob(ctx, item.ServerID, item.Action, "offline", payload)
 		} else {
-			_, _ = a.store.createJob(ctx, item.ServerID, item.Action, payload)
+			created, err = a.store.createJob(ctx, item.ServerID, item.Action, payload)
 		}
 	}
-	return nil
+	if err == nil {
+		_ = a.store.markScheduleJob(ctx, item.ID, created.ID)
+	}
+	return created, err
 }
 
 func validCommand(command string) bool {

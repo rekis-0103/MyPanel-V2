@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -41,12 +42,37 @@ func (a *agent) feature(w http.ResponseWriter, r *http.Request, serverID string,
 	}
 	switch parts[0] {
 	case "files":
-		a.files(w, r, serverID)
+		if len(parts) == 2 && parts[1] == "folders" {
+			a.createFolder(w, r, serverID)
+		} else if len(parts) == 2 && parts[1] == "move" {
+			a.moveFile(w, r, serverID)
+		} else if len(parts) == 1 {
+			a.files(w, r, serverID)
+		} else {
+			notFound(w)
+		}
 	case "backup":
 		a.createBackup(w, r, serverID)
 	case "restore":
 		a.restoreBackup(w, r, serverID)
 	case "backups":
+		if len(parts) == 3 && parts[2] == "download" && uuid.Validate(parts[1]) == nil && r.Method == http.MethodGet {
+			file, err := os.Open(filepath.Join(a.cfg.BackupRoot, serverID, parts[1]+".tar.gz"))
+			if err != nil {
+				notFound(w)
+				return
+			}
+			defer file.Close()
+			info, err := file.Stat()
+			if err != nil {
+				internal(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/gzip")
+			w.Header().Set("Content-Disposition", `attachment; filename="backup-`+parts[1]+`.tar.gz"`)
+			http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+			return
+		}
 		if len(parts) != 2 || uuid.Validate(parts[1]) != nil || r.Method != http.MethodDelete {
 			notFound(w)
 			return
@@ -60,6 +86,110 @@ func (a *agent) feature(w http.ResponseWriter, r *http.Request, serverID string,
 	default:
 		notFound(w)
 	}
+}
+
+func (a *agent) createFolder(w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		method(w)
+		return
+	}
+	var input struct {
+		Path string `json:"path"`
+	}
+	if decode(w, r, &input) != nil {
+		return
+	}
+	root := a.serverPath(serverID)
+	if input.Path == "" || reservedServerPath(input.Path) {
+		write(w, http.StatusBadRequest, apiError{Error: "unsafe folder path", Code: "unsafe_path"})
+		return
+	}
+	target, err := safePath(root, input.Path, true)
+	if err != nil || target == root {
+		write(w, http.StatusBadRequest, apiError{Error: "unsafe folder path", Code: "unsafe_path"})
+		return
+	}
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	defer rootFS.Close()
+	relative, _ := filepath.Rel(root, target)
+	if _, err := rootFS.Lstat(relative); err == nil {
+		write(w, http.StatusConflict, apiError{Error: "destination already exists", Code: "path_conflict"})
+		return
+	} else if !errors.Is(err, os.ErrNotExist) {
+		internal(w, err)
+		return
+	}
+	if err := rootFS.MkdirAll(relative, 0750); err != nil {
+		internal(w, err)
+		return
+	}
+	write(w, http.StatusCreated, map[string]string{"path": input.Path})
+}
+
+func (a *agent) moveFile(w http.ResponseWriter, r *http.Request, serverID string) {
+	if r.Method != http.MethodPost {
+		method(w)
+		return
+	}
+	var input struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if decode(w, r, &input) != nil {
+		return
+	}
+	root := a.serverPath(serverID)
+	if input.From == "" || input.To == "" || reservedServerPath(input.From) || reservedServerPath(input.To) {
+		write(w, http.StatusBadRequest, apiError{Error: "unsafe move path", Code: "unsafe_path"})
+		return
+	}
+	from, fromErr := safePath(root, input.From, false)
+	to, toErr := safePath(root, input.To, true)
+	if fromErr != nil || toErr != nil || from == root || to == root || strings.HasPrefix(to+string(filepath.Separator), from+string(filepath.Separator)) {
+		write(w, http.StatusBadRequest, apiError{Error: "unsafe move path", Code: "unsafe_path"})
+		return
+	}
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	defer rootFS.Close()
+	fromRelative, _ := filepath.Rel(root, from)
+	toRelative, _ := filepath.Rel(root, to)
+	info, err := rootFS.Lstat(fromRelative)
+	if errors.Is(err, os.ErrNotExist) {
+		notFound(w)
+		return
+	}
+	if err != nil {
+		internal(w, err)
+		return
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		write(w, http.StatusBadRequest, apiError{Error: "symbolic links are not accessible", Code: "unsafe_path"})
+		return
+	}
+	if _, err := rootFS.Lstat(toRelative); err == nil {
+		write(w, http.StatusConflict, apiError{Error: "destination already exists", Code: "path_conflict"})
+		return
+	} else if !errors.Is(err, os.ErrNotExist) {
+		internal(w, err)
+		return
+	}
+	if err := rootFS.MkdirAll(filepath.Dir(toRelative), 0750); err != nil {
+		internal(w, err)
+		return
+	}
+	if err := rootFS.Rename(fromRelative, toRelative); err != nil {
+		internal(w, err)
+		return
+	}
+	write(w, http.StatusOK, map[string]string{"path": input.To})
 }
 
 func (a *agent) files(w http.ResponseWriter, r *http.Request, serverID string) {
@@ -421,7 +551,8 @@ func (a *agent) restoreBackup(w http.ResponseWriter, r *http.Request, serverID s
 		return
 	}
 	var input struct {
-		BackupID string `json:"backupId"`
+		BackupID       string `json:"backupId"`
+		ExpectedSHA256 string `json:"expectedSha256"`
 	}
 	if decode(w, r, &input) != nil {
 		return
@@ -430,14 +561,18 @@ func (a *agent) restoreBackup(w http.ResponseWriter, r *http.Request, serverID s
 		write(w, http.StatusBadRequest, apiError{Error: "invalid backup id", Code: "invalid_backup"})
 		return
 	}
-	if err := a.restore(r.Context(), serverID, input.BackupID); err != nil {
+	if len(input.ExpectedSHA256) != 64 {
+		write(w, http.StatusBadRequest, apiError{Error: "backup checksum is required", Code: "invalid_backup"})
+		return
+	}
+	if err := a.restore(r.Context(), serverID, input.BackupID, input.ExpectedSHA256); err != nil {
 		internal(w, err)
 		return
 	}
 	write(w, http.StatusOK, map[string]bool{"restored": true})
 }
 
-func (a *agent) restore(ctx context.Context, serverID, backupID string) error {
+func (a *agent) restore(ctx context.Context, serverID, backupID, expectedSHA256 string) error {
 	if err := a.docker.Stop(ctx, serverID); err != nil {
 		return err
 	}
@@ -446,6 +581,20 @@ func (a *agent) restore(ctx context.Context, serverID, backupID string) error {
 		return err
 	}
 	archivePath := filepath.Join(a.cfg.BackupRoot, serverID, backupID+".tar.gz")
+	checksumFile, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	hasher := sha256.New()
+	_, hashErr := io.Copy(hasher, checksumFile)
+	closeErr := checksumFile.Close()
+	if hashErr != nil || closeErr != nil {
+		return errors.Join(hashErr, closeErr)
+	}
+	actual := strings.ToLower(hex.EncodeToString(hasher.Sum(nil)))
+	if subtle.ConstantTimeCompare([]byte(actual), []byte(strings.ToLower(expectedSHA256))) != 1 {
+		return errors.New("backup checksum verification failed")
+	}
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return err

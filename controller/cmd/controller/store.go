@@ -35,7 +35,7 @@ const serverColumns = `s.id, s.node_id, s.name, s.runtime, s.version, s.java_ver
  s.config, s.last_error, s.created_at, s.updated_at, s.owner_user_id,
  COALESCE((SELECT username FROM users u WHERE u.id=s.owner_user_id),''),
  (SELECT status FROM subscriptions sub WHERE sub.server_id=s.id),
- (SELECT current_period_end FROM subscriptions sub WHERE sub.server_id=s.id)`
+ (SELECT current_period_end FROM subscriptions sub WHERE sub.server_id=s.id), s.restart_required`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -45,7 +45,7 @@ func scanServer(row rowScanner) (server, error) {
 		&item.MemoryMB, &item.CPU, &item.DiskMB, &item.BindIP, &item.Port,
 		&item.DesiredState, &item.State, &item.Config, &item.LastError,
 		&item.CreatedAt, &item.UpdatedAt, &item.OwnerUserID, &item.OwnerUsername,
-		&item.SubscriptionStatus, &item.SubscriptionEndsAt)
+		&item.SubscriptionStatus, &item.SubscriptionEndsAt, &item.RestartRequired)
 	return item, err
 }
 
@@ -487,17 +487,25 @@ FROM audit_events a LEFT JOIN users u ON u.id=a.user_id ORDER BY a.created_at DE
 }
 
 func (s *store) createBackupJob(ctx context.Context, serverID, name string) (backup, job, error) {
+	return s.createBackupJobKind(ctx, serverID, name, "manual", nil)
+}
+
+func (s *store) createBackupJobKind(ctx context.Context, serverID, name, kind string, scheduleID *string) (backup, job, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return backup{}, job{}, err
 	}
 	defer tx.Rollback(ctx)
-	item := backup{ID: uuid.NewString(), ServerID: serverID, Name: name, Status: "queued"}
-	if err := tx.QueryRow(ctx, `INSERT INTO backups (id,server_id,name,status)
-VALUES ($1,$2,$3,'queued') RETURNING created_at`, item.ID, item.ServerID, item.Name).Scan(&item.CreatedAt); err != nil {
+	item := backup{ID: uuid.NewString(), ServerID: serverID, Name: name, Status: "queued", Kind: kind}
+	if err := tx.QueryRow(ctx, `INSERT INTO backups (id,server_id,name,status,kind,schedule_id)
+VALUES ($1,$2,$3,'queued',$4,$5) RETURNING created_at`, item.ID, item.ServerID, item.Name, kind, scheduleID).Scan(&item.CreatedAt); err != nil {
 		return backup{}, job{}, err
 	}
-	payload, _ := json.Marshal(map[string]string{"backupId": item.ID})
+	payloadValue := map[string]any{"backupId": item.ID}
+	if scheduleID != nil {
+		payloadValue["scheduleId"] = *scheduleID
+	}
+	payload, _ := json.Marshal(payloadValue)
 	var createdJob job
 	if err := tx.QueryRow(ctx, `INSERT INTO jobs (id,node_id,server_id,action,status,payload)
 VALUES ($1,$2,$3,'backup','queued',$4)
@@ -513,8 +521,45 @@ RETURNING `+jobColumns, uuid.NewString(), defaultNodeID, serverID, payload).Scan
 	return item, createdJob, nil
 }
 
+func (s *store) createRestoreJob(ctx context.Context, serverID, backupID, expectedChecksum string) (backup, job, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return backup{}, job{}, err
+	}
+	defer tx.Rollback(ctx)
+	pre := backup{ID: uuid.NewString(), ServerID: serverID, Name: "Pre-restore " + time.Now().Format("2006-01-02 15:04"), Status: "queued", Kind: "pre_restore"}
+	if err := tx.QueryRow(ctx, `INSERT INTO backups(id,server_id,name,status,kind) VALUES($1,$2,$3,'queued','pre_restore') RETURNING created_at`, pre.ID, serverID, pre.Name).Scan(&pre.CreatedAt); err != nil {
+		return backup{}, job{}, err
+	}
+	created, err := insertJob(ctx, tx, serverID, "restore", map[string]string{"backupId": backupID, "expectedSha256": expectedChecksum, "preBackupId": pre.ID})
+	if err != nil {
+		return backup{}, job{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return backup{}, job{}, err
+	}
+	return pre, created, nil
+}
+
+func (s *store) scheduledBackupPruneCandidates(ctx context.Context, serverID, scheduleID string, retain int) ([]string, error) {
+	rows, err := s.db.Query(ctx, `SELECT id FROM backups WHERE server_id=$1 AND schedule_id=$2 AND status IN ('ready','failed') ORDER BY created_at DESC OFFSET $3`, serverID, scheduleID, retain)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func (s *store) listBackups(ctx context.Context, serverID string) ([]backup, error) {
-	rows, err := s.db.Query(ctx, `SELECT id,server_id,name,size_bytes,checksum_sha256,status,error,created_at,completed_at
+	rows, err := s.db.Query(ctx, `SELECT id,server_id,name,size_bytes,checksum_sha256,status,error,created_at,completed_at,kind
 FROM backups WHERE server_id=$1 ORDER BY created_at DESC`, serverID)
 	if err != nil {
 		return nil, err
@@ -524,7 +569,7 @@ FROM backups WHERE server_id=$1 ORDER BY created_at DESC`, serverID)
 	for rows.Next() {
 		var item backup
 		if err := rows.Scan(&item.ID, &item.ServerID, &item.Name, &item.SizeBytes, &item.ChecksumSHA256,
-			&item.Status, &item.Error, &item.CreatedAt, &item.CompletedAt); err != nil {
+			&item.Status, &item.Error, &item.CreatedAt, &item.CompletedAt, &item.Kind); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -534,10 +579,10 @@ FROM backups WHERE server_id=$1 ORDER BY created_at DESC`, serverID)
 
 func (s *store) getBackup(ctx context.Context, serverID, backupID string) (backup, error) {
 	var item backup
-	err := s.db.QueryRow(ctx, `SELECT id,server_id,name,size_bytes,checksum_sha256,status,error,created_at,completed_at
+	err := s.db.QueryRow(ctx, `SELECT id,server_id,name,size_bytes,checksum_sha256,status,error,created_at,completed_at,kind
 FROM backups WHERE server_id=$1 AND id=$2`, serverID, backupID).Scan(&item.ID, &item.ServerID,
 		&item.Name, &item.SizeBytes, &item.ChecksumSHA256, &item.Status, &item.Error,
-		&item.CreatedAt, &item.CompletedAt)
+		&item.CreatedAt, &item.CompletedAt, &item.Kind)
 	return item, err
 }
 
@@ -584,7 +629,7 @@ RETURNING id,server_id,name,action,payload,interval_minutes,enabled,next_run_at,
 }
 
 func (s *store) listSchedules(ctx context.Context, serverID string) ([]schedule, error) {
-	rows, err := s.db.Query(ctx, `SELECT id,server_id,name,action,payload,interval_minutes,enabled,next_run_at,last_run_at,created_at
+	rows, err := s.db.Query(ctx, `SELECT id,server_id,name,action,payload,interval_minutes,enabled,next_run_at,last_run_at,created_at,last_job_id
 FROM schedules WHERE server_id=$1 ORDER BY created_at`, serverID)
 	if err != nil {
 		return nil, err
@@ -594,12 +639,36 @@ FROM schedules WHERE server_id=$1 ORDER BY created_at`, serverID)
 	for rows.Next() {
 		var item schedule
 		if err := rows.Scan(&item.ID, &item.ServerID, &item.Name, &item.Action, &item.Payload,
-			&item.IntervalMinutes, &item.Enabled, &item.NextRunAt, &item.LastRunAt, &item.CreatedAt); err != nil {
+			&item.IntervalMinutes, &item.Enabled, &item.NextRunAt, &item.LastRunAt, &item.CreatedAt, &item.LastJobID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+func (s *store) getSchedule(ctx context.Context, serverID, scheduleID string) (schedule, error) {
+	var item schedule
+	err := s.db.QueryRow(ctx, `SELECT id,server_id,name,action,payload,interval_minutes,enabled,next_run_at,last_run_at,created_at,last_job_id FROM schedules WHERE server_id=$1 AND id=$2`, serverID, scheduleID).Scan(&item.ID, &item.ServerID, &item.Name, &item.Action, &item.Payload, &item.IntervalMinutes, &item.Enabled, &item.NextRunAt, &item.LastRunAt, &item.CreatedAt, &item.LastJobID)
+	return item, err
+}
+func (s *store) updateSchedule(ctx context.Context, serverID, scheduleID, name, action string, payload any, interval int, enabled bool) (schedule, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return schedule{}, err
+	}
+	ct, err := s.db.Exec(ctx, `UPDATE schedules SET name=$3,action=$4,payload=$5,interval_minutes=$6,enabled=$7,next_run_at=CASE WHEN NOT enabled AND $7 THEN now()+make_interval(mins=>$6) ELSE next_run_at END,updated_at=now() WHERE server_id=$1 AND id=$2`, serverID, scheduleID, name, action, data, interval, enabled)
+	if err != nil {
+		return schedule{}, err
+	}
+	if ct.RowsAffected() == 0 {
+		return schedule{}, pgx.ErrNoRows
+	}
+	return s.getSchedule(ctx, serverID, scheduleID)
+}
+func (s *store) markScheduleJob(ctx context.Context, scheduleID, jobID string) error {
+	_, err := s.db.Exec(ctx, `UPDATE schedules SET last_job_id=$2,last_run_at=now(),updated_at=now() WHERE id=$1`, scheduleID, jobID)
+	return err
 }
 
 func (s *store) deleteSchedule(ctx context.Context, serverID, scheduleID string) error {
@@ -623,7 +692,7 @@ func (s *store) claimDueSchedules(ctx context.Context, limit int) ([]schedule, e
 )
 UPDATE schedules s SET last_run_at=now(),next_run_at=now()+make_interval(mins=>s.interval_minutes)
 FROM due WHERE s.id=due.id
-RETURNING s.id,s.server_id,s.name,s.action,s.payload,s.interval_minutes,s.enabled,s.next_run_at,s.last_run_at,s.created_at`, limit)
+RETURNING s.id,s.server_id,s.name,s.action,s.payload,s.interval_minutes,s.enabled,s.next_run_at,s.last_run_at,s.created_at,s.last_job_id`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -632,7 +701,7 @@ RETURNING s.id,s.server_id,s.name,s.action,s.payload,s.interval_minutes,s.enable
 	for rows.Next() {
 		var item schedule
 		if err := rows.Scan(&item.ID, &item.ServerID, &item.Name, &item.Action, &item.Payload,
-			&item.IntervalMinutes, &item.Enabled, &item.NextRunAt, &item.LastRunAt, &item.CreatedAt); err != nil {
+			&item.IntervalMinutes, &item.Enabled, &item.NextRunAt, &item.LastRunAt, &item.CreatedAt, &item.LastJobID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)

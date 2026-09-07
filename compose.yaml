@@ -187,6 +187,7 @@ services:
       NODE_CPUS: ${NODE_CPUS:-7}
       NODE_DISK_MB: ${NODE_DISK_MB:-102400}
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      CURSEFORGE_API_KEY_FILE: ${CURSEFORGE_API_KEY_FILE:-}
     volumes:
       - mtls-certs:/run/mypanel-certs:ro
       - controller-secrets:/run/mypanel-secrets:ro

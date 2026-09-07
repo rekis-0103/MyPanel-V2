@@ -30,6 +30,7 @@ type server struct {
 	CreatedAt          time.Time       `json:"createdAt"`
 	UpdatedAt          time.Time       `json:"updatedAt"`
 	CurrentJob         *job            `json:"currentJob,omitempty"`
+	RestartRequired    bool            `json:"restartRequired"`
 }
 
 type createServerInput struct {
@@ -67,6 +68,7 @@ type backup struct {
 	Error          *string    `json:"error"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	CompletedAt    *time.Time `json:"completedAt"`
+	Kind           string     `json:"kind"`
 }
 
 type schedule struct {
@@ -80,6 +82,7 @@ type schedule struct {
 	NextRunAt       time.Time       `json:"nextRunAt"`
 	LastRunAt       *time.Time      `json:"lastRunAt"`
 	CreatedAt       time.Time       `json:"createdAt"`
+	LastJobID       *string         `json:"lastJobId"`
 }
 
 type userRecord struct {
@@ -195,6 +198,50 @@ type agentState struct {
 	MemoryBytes int64   `json:"memoryBytes"`
 	DiskBytes   int64   `json:"diskBytes"`
 	Players     int     `json:"players"`
+	PlayersMax  int     `json:"playersMax,omitempty"`
+	LatencyMS   int     `json:"latencyMs,omitempty"`
+}
+
+type metricSample struct {
+	ServerID    string    `json:"serverId"`
+	BucketAt    time.Time `json:"bucketAt"`
+	Resolution  string    `json:"resolution"`
+	State       string    `json:"state"`
+	CPUPercent  float64   `json:"cpuPercent"`
+	MemoryBytes int64     `json:"memoryBytes"`
+	DiskBytes   int64     `json:"diskBytes"`
+	Players     *int      `json:"playersOnline"`
+	PlayersMax  *int      `json:"playersMax"`
+	LatencyMS   *int      `json:"latencyMs"`
+}
+
+type notification struct {
+	ID         string     `json:"id"`
+	ServerID   *string    `json:"serverId"`
+	Severity   string     `json:"severity"`
+	Kind       string     `json:"kind"`
+	Title      string     `json:"title"`
+	Message    string     `json:"message"`
+	Active     bool       `json:"active"`
+	ReadAt     *time.Time `json:"readAt"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ResolvedAt *time.Time `json:"resolvedAt"`
+}
+
+type serverAddon struct {
+	ID          string          `json:"id"`
+	ServerID    string          `json:"serverId"`
+	Provider    string          `json:"provider"`
+	ProjectID   string          `json:"projectId"`
+	VersionID   string          `json:"versionId"`
+	Name        string          `json:"name"`
+	FileName    string          `json:"fileName"`
+	FileHash    string          `json:"fileHash"`
+	ManagedPath string          `json:"managedPath"`
+	Status      string          `json:"status"`
+	Metadata    json.RawMessage `json:"metadata"`
+	CreatedAt   time.Time       `json:"createdAt"`
+	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
 type consoleEvent struct {

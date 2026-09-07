@@ -32,6 +32,7 @@ type config struct {
 	SchedulerInterval   time.Duration
 	BootstrapUsername   string
 	BootstrapPassword   string
+	CurseForgeAPIKey    string
 }
 
 func loadConfig() (config, error) {
@@ -48,6 +49,10 @@ func loadConfig() (config, error) {
 		return config{}, err
 	}
 	bootstrapPassword, err := secret("ADMIN_PASSWORD", "ADMIN_PASSWORD_FILE")
+	if err != nil {
+		return config{}, err
+	}
+	curseForgeAPIKey, err := secret("CURSEFORGE_API_KEY", "CURSEFORGE_API_KEY_FILE")
 	if err != nil {
 		return config{}, err
 	}
@@ -74,6 +79,7 @@ func loadConfig() (config, error) {
 		SchedulerInterval:   time.Duration(envInt("SCHEDULER_SECONDS", 30)) * time.Second,
 		BootstrapUsername:   env("ADMIN_USERNAME", "admin"),
 		BootstrapPassword:   bootstrapPassword,
+		CurseForgeAPIKey:    curseForgeAPIKey,
 	}
 	if c.DatabaseURL == "" {
 		return config{}, fmt.Errorf("DATABASE_URL or DATABASE_PASSWORD_FILE is required")

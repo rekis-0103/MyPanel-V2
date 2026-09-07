@@ -86,13 +86,26 @@ menghapus direktori data.
 ## Runtime features
 
 - `GET /api/v1/servers/{id}/metrics`
+- `GET /api/v1/metrics/servers` — metric batch seluruh server yang boleh dilihat.
+- `GET /api/v1/servers/{id}/metrics/history?resolution=1m|15m` — 24 jam
+  untuk sampel 1 menit atau 7 hari untuk agregat 15 menit.
 - `GET /api/v1/servers/{id}/logs`
 - `GET|PUT|DELETE /api/v1/servers/{id}/files?path=...`
+- `POST /api/v1/servers/{id}/files/folders` — membuat folder.
+- `POST /api/v1/servers/{id}/files/move` — rename/move tanpa overwrite.
 - `GET|POST /api/v1/servers/{id}/backups`
+- `GET /api/v1/servers/{id}/backups/{backupId}/download`
 - `POST /api/v1/servers/{id}/backups/{backupId}/restore`
 - `DELETE /api/v1/servers/{id}/backups/{backupId}`
 - `GET|POST /api/v1/servers/{id}/schedules`
+- `PUT /api/v1/servers/{id}/schedules/{scheduleId}` — edit atau enable/disable.
+- `POST /api/v1/servers/{id}/schedules/{scheduleId}/run` — jalankan sekarang.
 - `DELETE /api/v1/servers/{id}/schedules/{scheduleId}`
+- `GET /api/v1/servers/{id}/addons/search?provider=modrinth|curseforge&q=...`
+- `GET|POST /api/v1/servers/{id}/addons` — inventori dan install/update.
+- `DELETE /api/v1/servers/{id}/addons/{addonId}`
+- `GET /api/v1/notifications`, `POST /api/v1/notifications` dengan
+  `{ "action": "read_all" }`, dan `POST /api/v1/notifications/{id}`.
 - `GET /api/v1/audit`
 
 `/api/v1/servers/{id}/console` di-upgrade menjadi WebSocket. Client mengirim
@@ -115,3 +128,16 @@ ditolak dengan hasil `server is still starting`.
 File dibatasi 10 MiB per operasi dan path absolut, traversal, serta symlink yang
 keluar dari root server ditolak agent. Pesan error node sengaja disanitasi pada
 boundary controller.
+
+Restore hanya menerima backup berstatus ready yang memiliki SHA-256. Worker
+membuat snapshot pra-restore, menghitung ulang checksum arsip dengan perbandingan
+constant-time di agent, baru kemudian mengekstrak ke direktori sementara.
+Backup terjadwal mempertahankan tujuh snapshot terbaru per schedule.
+
+Install/update add-on adalah job durable. Browser hanya mengirim provider dan
+project ID; controller memilih versi kompatibel, dependency wajib harus
+dikonfirmasi, dan agent membatasi HTTPS redirect/host, ukuran 128 MiB, nama file,
+target `plugins/`/`mods/`, serta SHA-512 Modrinth atau SHA-1 CurseForge. Field
+`restartRequired` pada server dibersihkan setelah start/restart berhasil.
+Install dan pencarian ditolak untuk runtime tanpa loader; saat ini runtime yang
+didukung adalah Paper, Purpur, dan Fabric.

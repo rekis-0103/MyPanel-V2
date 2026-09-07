@@ -26,6 +26,9 @@
    over an authenticated WebSocket.
 6. Checkout atomically reserves package capacity, port, ownership, subscription,
    simulated order, and provisioning job under a PostgreSQL advisory lock.
+7. A minute collector fetches bounded-concurrency server metrics, stores 24-hour
+   raw samples, rolls up 15-minute samples for seven days, and maintains
+   deduplicated per-user operational alerts.
 
 ## Frontend structure
 
@@ -146,6 +149,14 @@
   the server and enters seven days of grace. After grace, a durable release job
   removes the container and port reservation but retains server data; retained
   disk remains counted. Reactivation allocates a new port around that data.
+- Add-on provider metadata is resolved by the controller, while bytes are
+  downloaded by the agent from an explicit CDN host allowlist. Redirects,
+  filename, destination, size, symlink state, and provider checksum are checked
+  before an atomic rename. Provider credentials never cross to the browser or
+  agent.
+- Backup restore uses a durable pre-restore snapshot and verifies the stored
+  archive SHA-256 before extraction. Scheduled backups are associated with their
+  schedule and pruned to the newest seven completed snapshots.
 
 ## Deployment
 

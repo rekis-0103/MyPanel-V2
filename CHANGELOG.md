@@ -8,6 +8,14 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 ### Added
 
+- Batch server metrics, Minecraft player/latency ping, 24-hour one-minute
+  history, seven-day rollups, and deduplicated in-panel capacity/runtime alerts.
+- Managed Modrinth plugin/mod discovery and checksum-verified install, update,
+  dependency, remove jobs, plus an optional official CurseForge adapter.
+- Create-folder and safe rename/move, downloadable backups, pre-restore
+  snapshots, restore checksum verification, scheduled backup retention, and
+  schedule edit/enable/run-now controls.
+- GitHub Actions backend race/vet, frontend test/build, and Compose validation.
 - Multi-user registration and login, owner/user RBAC, server ownership, account
   suspension, forced password change after admin reset, and session invalidation.
 - Simulated packages, atomic checkout, idempotent orders, 30-day subscriptions,

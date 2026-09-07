@@ -31,8 +31,14 @@ pengganti Pterodactyl yang kompatibel langsung.
 - UI responsif dengan navigasi server kontekstual, mode terang/gelap, navigasi
   bawah mobile, deep-link per server, serta pilihan bahasa Indonesia/English.
 - Console xterm.js berwarna melalui WebSocket incremental, grafik CPU/RAM/disk,
-  file manager tabel dengan upload
-  drag-and-drop dan download, backup/restore, schedule, settings, dan audit log.
+  jumlah pemain dan latency dari Minecraft status ping, serta riwayat metric
+  24 jam/7 hari.
+- File manager dengan upload drag-and-drop, editor, folder baru, rename, dan
+  download; backup checksum dengan snapshot pra-restore serta download; schedule
+  edit/jeda/run-now; notifikasi in-panel; dan audit log.
+- Manager plugin/mod terkelola dengan pencarian kompatibel dari Modrinth,
+  adapter CurseForge opsional, dependency confirmation, checksum verification,
+  install/update/remove durable, dan penanda restart-required.
 - Agent privat dengan mTLS. Controller dan web tidak menerima Docker socket.
 - Compose dengan secret files, network terpisah, filesystem read-only, capability
   minimum, log rotation, serta health/readiness check. Agent hanya mempertahankan
@@ -146,6 +152,31 @@ dipin melalui
 dapat memasukkan image arbitrary. Server yang sudah ada dimigrasikan ke Java 21
 agar perilakunya tidak berubah.
 
+### Provider add-on opsional
+
+Modrinth aktif tanpa credential. Pencarian otomatis membatasi hasil sesuai
+runtime dan versi Minecraft server. File utama dan dependency wajib diunduh oleh
+agent hanya dari host CDN allowlist dan harus lulus SHA-512 sebelum dipindahkan
+ke `plugins/` atau `mods/`. Add-on terkelola tersedia untuk Paper/Purpur
+(plugin) dan Fabric (mod); Vanilla tetap ditampilkan tanpa menu add-on karena
+runtime tersebut tidak memiliki plugin/mod loader.
+
+CurseForge memerlukan API key resmi. Simpan key di file di luar Git, mount file
+tersebut read-only ke service `controller` melalui `compose.override.yaml`, lalu
+set `CURSEFORGE_API_KEY_FILE` ke path di dalam container. Contoh override lokal:
+
+```yaml
+services:
+  controller:
+    volumes:
+      - /etc/mypanel/curseforge_api_key:/run/mypanel-secrets/curseforge_api_key:ro
+    environment:
+      CURSEFORGE_API_KEY_FILE: /run/mypanel-secrets/curseforge_api_key
+```
+
+Jangan menaruh key di `.env`, commit, issue, atau log. Setelah mengubah override,
+jalankan `docker compose up -d --build controller web`.
+
 ## Development dan quality gate
 
 ```sh
@@ -170,8 +201,9 @@ Caddy produksi. Untuk validasi deployment, jalankan
 
 Telemetri CPU, RAM, disk, dan uptime host tersedia untuk owner melalui endpoint
 kapasitas; user hanya menerima sisa kapasitas jual dan ketersediaan paket.
-Operasi file Rename dan New Folder tetap dinonaktifkan sampai
-kontrak backend khusus tersedia; upload, download, edit, dan delete tetap aktif.
+Dashboard mengambil metric semua server melalui satu endpoint batch. File
+manager mendukung create-folder serta move/rename dengan pemeriksaan traversal,
+symlink, path internal, dan konflik tujuan di agent.
 Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
 vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
 cgroup, dan disk menghitung file di direktori data server. Console memakai
@@ -244,8 +276,11 @@ kerentanan atau membagikan kredensial melalui issue publik; ikuti
 - Kuota disk ditegakkan oleh file manager, pemeriksaan sebelum start/restart,
   dan reconciliation berkala. Hard filesystem project quota bergantung pada
   filesystem host dan belum dikonfigurasi otomatis.
-- Jumlah pemain belum diambil dari query Minecraft dan sementara dilaporkan `0`.
-- Backup tersimpan lokal pada node; salinan off-site harus ditambahkan oleh
-  operator.
+- Player count dan latency memakai Minecraft Server List Ping; nilai tidak
+  tersedia ketika runtime belum siap atau query server dinonaktifkan.
+- Backup tersimpan lokal pada node; tujuh backup terbaru per schedule dipertahankan,
+  tetapi salinan off-site tetap harus ditambahkan oleh operator.
+- CurseForge nonaktif secara default dan membutuhkan API key resmi melalui file
+  secret. Spigot/Bukkit tidak di-scrape dan belum menjadi provider.
 - TLS publik/VPN dan hardening SSH sengaja menjadi tindakan operator agar proses
   instalasi tidak memutus akses VM.

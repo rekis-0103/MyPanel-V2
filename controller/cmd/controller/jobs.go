@@ -72,6 +72,9 @@ func (a *app) executeJob(parent context.Context, item job) {
 		}
 		if err == nil {
 			_ = a.store.setObservedState(ctx, item.ServerID, lifecycleCompletionState(item.Action), nil)
+			if item.Action == "start" || item.Action == "restart" {
+				_ = a.store.clearRestartRequired(ctx, item.ServerID)
+			}
 			if item.Action == "stop" {
 				a.recordConsoleEvent(ctx, item.ServerID, "Server marked as stopped.")
 			} else {

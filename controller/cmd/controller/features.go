@@ -70,6 +70,13 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 		a.backupRoutes(w, r, serverID, parts[1:])
 	case "schedules":
 		a.scheduleRoutes(w, r, serverID, parts[1:])
+	case "addons":
+		item, err := a.store.getForSession(r.Context(), serverID, session)
+		if err != nil {
+			notFound(w, r)
+			return
+		}
+		a.addonRoutes(w, r, item, parts[1:])
 	case "console":
 		a.console(w, r, serverID)
 	default:
@@ -775,6 +782,32 @@ func (a *app) executeFeatureJob(ctx context.Context, item job, serverItem server
 		}
 		output, err := a.agent.command(ctx, item.ServerID, payload.Command)
 		*result = map[string]string{"output": output}
+		return err
+	case "addon_install":
+		var payload struct {
+			AddonID string              `json:"addonId"`
+			Files   []resolvedAddonFile `json:"files"`
+			OldPath string              `json:"oldPath"`
+		}
+		if json.Unmarshal(item.Payload, &payload) != nil || uuid.Validate(payload.AddonID) != nil || len(payload.Files) == 0 {
+			return errors.New("invalid add-on install payload")
+		}
+		err := a.agent.serverAction(ctx, item.ServerID, "addons/install", map[string]any{"files": payload.Files}, result)
+		if err == nil && payload.OldPath != "" && payload.OldPath != payload.Files[0].Directory+"/"+payload.Files[0].FileName {
+			err = a.agent.serverAction(ctx, item.ServerID, "addons/remove", map[string]string{"path": payload.OldPath}, result)
+		}
+		_ = a.store.finishAddon(ctx, payload.AddonID, true, err)
+		return err
+	case "addon_remove":
+		var payload struct {
+			AddonID string `json:"addonId"`
+			Path    string `json:"path"`
+		}
+		if json.Unmarshal(item.Payload, &payload) != nil || uuid.Validate(payload.AddonID) != nil || payload.Path == "" {
+			return errors.New("invalid add-on remove payload")
+		}
+		err := a.agent.serverAction(ctx, item.ServerID, "addons/remove", map[string]string{"path": payload.Path}, result)
+		_ = a.store.finishAddon(ctx, payload.AddonID, false, err)
 		return err
 	default:
 		return fmt.Errorf("unsupported job action %q", item.Action)

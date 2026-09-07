@@ -197,3 +197,34 @@ func TestCPUNanoLimitAllowsOnlyStartupBurst(t *testing.T) {
 		t.Fatalf("runtime CPU = %d, want 2000000000", got)
 	}
 }
+
+func TestAddonDownloadAllowlistAndNames(t *testing.T) {
+	for _, host := range []string{"cdn.modrinth.com", "mediafilez.forgecdn.net", "edge.forgecdn.net"} {
+		if !allowedAddonHost(host) {
+			t.Fatalf("expected %s to be allowed", host)
+		}
+	}
+	for _, host := range []string{"modrinth.com.evil.test", "forgecdn.net.evil.test", "localhost"} {
+		if allowedAddonHost(host) {
+			t.Fatalf("unsafe host %s was allowed", host)
+		}
+	}
+	if !validAddonName("SkinRestorer.jar") {
+		t.Fatal("valid jar was rejected")
+	}
+	for _, name := range []string{"../plugin.jar", "plugin.sh", "plugins/plugin.jar", "x.jar\x00"} {
+		if validAddonName(name) {
+			t.Fatalf("unsafe add-on name %q was allowed", name)
+		}
+	}
+	for _, path := range []string{"plugins/SkinRestorer.jar", "mods/fabric-api.jar"} {
+		if !validManagedAddonPath(path) {
+			t.Fatalf("expected managed path %q to be accepted", path)
+		}
+	}
+	for _, path := range []string{"plugins/../server.properties", "plugins/nested/addon.jar", "config/addon.jar", "plugins/addon.txt", "/plugins/addon.jar"} {
+		if validManagedAddonPath(path) {
+			t.Fatalf("unsafe managed path %q was allowed", path)
+		}
+	}
+}

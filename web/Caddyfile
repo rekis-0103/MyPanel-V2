@@ -9,7 +9,7 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "same-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; img-src 'self' data: https://images.unsplash.com; script-src 'self'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'"
+		Content-Security-Policy "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; connect-src 'self'; img-src 'self' data: https://images.unsplash.com https://cdn.modrinth.com https://*.forgecdn.net; script-src 'self'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'"
 	}
 	handle /api/* {
 		reverse_proxy controller:8080

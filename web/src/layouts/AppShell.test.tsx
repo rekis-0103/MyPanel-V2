@@ -9,7 +9,7 @@ const server = { id: 'server-1', nodeId: 'node-1', ownerUserId: 'user-1', ownerU
 const session = { userId: 'user-1', username: 'admin', role: 'owner', mustChangePassword: false, csrfToken: 'token' } satisfies Session;
 
 function renderShell(path: string, currentSession: Session = session) {
-  return render(<I18nProvider><MemoryRouter initialEntries={[path]}><AppShell servers={[server]} session={currentSession} onLogout={async () => undefined}><div>content</div></AppShell></MemoryRouter></I18nProvider>);
+  return render(<I18nProvider><MemoryRouter initialEntries={[path]}><AppShell servers={[server]} capacity={null} session={currentSession} onLogout={async () => undefined}><div>content</div></AppShell></MemoryRouter></I18nProvider>);
 }
 
 describe('AppShell contextual navigation', () => {

@@ -83,6 +83,8 @@ func (a *agent) feature(w http.ResponseWriter, r *http.Request, serverID string,
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	case "addons":
+		a.addonOperation(w, r, serverID, parts[1:])
 	default:
 		notFound(w)
 	}

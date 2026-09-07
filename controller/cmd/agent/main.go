@@ -295,6 +295,7 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 		if includeMetrics {
 			disk, _ = directorySize(a.serverPath(id))
 		}
+		players, playersMax, latencyMS := 0, 0, 0
 		if spec, metadataErr := a.readMetadata(id); metadataErr == nil {
 			if runtimeLimit := cpuNanoLimit(spec.CPU, false); state.State == "running" && state.NanoCPUs != runtimeLimit {
 				if err := a.docker.SetCPU(ctx, id, runtimeLimit); err != nil {
@@ -310,9 +311,15 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 				state.State = "error"
 				state.Reason = "server disk limit exceeded"
 			}
+			if includeMetrics && state.State == "running" {
+				if status, pingErr := pingMinecraft(ctx, spec.BindIP, spec.Port); pingErr == nil {
+					players, playersMax, latencyMS = status.Online, status.Max, status.LatencyMS
+				}
+			}
 		}
 		write(w, http.StatusOK, map[string]any{"state": state.State, "cpuPercent": state.CPUPercent,
-			"reason": state.Reason, "memoryBytes": state.MemoryBytes, "diskBytes": disk, "players": 0})
+			"reason": state.Reason, "memoryBytes": state.MemoryBytes, "diskBytes": disk,
+			"players": players, "playersMax": playersMax, "latencyMs": latencyMS})
 	case "logs":
 		if r.Method != http.MethodGet {
 			method(w)

@@ -72,6 +72,7 @@ func main() {
 	go a.runReconciler(workerCtx)
 	go a.runScheduler(workerCtx)
 	go a.runSubscriptionWorker(workerCtx)
+	go a.runMetricsCollector(workerCtx)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -120,6 +121,9 @@ func (a *app) routes() http.Handler {
 	mux.HandleFunc("/api/v1/packages", a.auth(a.packages))
 	mux.HandleFunc("/api/v1/packages/", a.auth(a.packageItem))
 	mux.HandleFunc("/api/v1/capacity", a.auth(a.capacity))
+	mux.HandleFunc("/api/v1/metrics/servers", a.auth(a.serverMetricsCollection))
+	mux.HandleFunc("/api/v1/notifications", a.auth(a.notificationCollection))
+	mux.HandleFunc("/api/v1/notifications/", a.auth(a.notificationItem))
 	mux.HandleFunc("/api/v1/orders", a.auth(a.orderCollection))
 	mux.HandleFunc("/api/v1/checkout", a.auth(a.checkout))
 	mux.HandleFunc("/api/v1/subscriptions", a.auth(a.subscriptionCollection))

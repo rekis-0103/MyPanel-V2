@@ -6,13 +6,13 @@ import { CreateServerForm } from './pages/Servers';
 describe('Dashboard server creation', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('submits the selected Java version', async () => {
+  it('derives Java from the selected Minecraft version', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ server: {}, job: {} }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
-    render(<I18nProvider><CreateServerForm catalog={[{ id: 'paper', name: 'Paper', java: 21, javaVersions: [21, 25] }]} busy={false} onCreated={async () => undefined} onError={() => undefined} setBusy={() => undefined} /></I18nProvider>);
+    render(<I18nProvider><CreateServerForm catalog={[{ id: 'paper', name: 'Paper', java: 21, javaVersions: [21, 25], versions: [{ id: '26.2', java: 25 }, { id: '1.21.4', java: 21 }] }]} onCreated={async () => undefined} onError={() => undefined} /></I18nProvider>);
 
     fireEvent.change(screen.getByLabelText('Nama server'), { target: { value: 'Java 25 SMP' } });
-    fireEvent.change(screen.getByLabelText('Java'), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('Versi Minecraft'), { target: { value: '26.2' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Buat dan provision' })); });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

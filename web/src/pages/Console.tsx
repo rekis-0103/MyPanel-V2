@@ -3,13 +3,13 @@ import { Terminal as XTerminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { Pause, Play, RotateCcw, Send, Square } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { websocketURL } from '../api';
+import { api, websocketURL } from '../api';
 import { ActionButton } from '../components/ui/ActionButton';
 import { MetricChart } from '../components/ui/MetricChart';
 import { StatusBadge, normalizeStatus } from '../components/ui/StatusBadge';
 import { formatBytes, serverAddress } from '../format';
 import { useI18n } from '../i18n';
-import type { Metrics, Server } from '../types';
+import type { MetricHistory, Metrics, Server } from '../types';
 
 type History = { cpu: number[]; memory: number[]; disk: number[] };
 type PendingWrite = { text: string; reset: boolean; follow: boolean };
@@ -26,6 +26,13 @@ export function Console({ server, csrfToken, busy, act }: { server: Server; csrf
   const [runtimeState, setRuntimeState] = useState(server.state);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { setRuntimeState(server.state); }, [server.state]);
+  useEffect(() => {
+    api<MetricHistory>(`/api/v1/servers/${server.id}/metrics/history?resolution=1m`).then((value) => setHistory({
+      cpu: value.items.slice(-30).map((item) => item.cpuPercent),
+      memory: value.items.slice(-30).map((item) => item.memoryBytes),
+      disk: value.items.slice(-30).map((item) => item.diskBytes),
+    })).catch(() => undefined);
+  }, [server.id]);
   useEffect(() => {
     if (!host.current) return;
     const term = new XTerminal({ convertEol: true, disableStdin: true, fontFamily: 'JetBrains Mono, monospace', fontSize: 12, lineHeight: 1.45, cursorBlink: false, scrollback: 5000, theme: consoleTerminalTheme(currentTheme()) });

@@ -1,4 +1,4 @@
-import { Activity, Bell, Blocks, Boxes, ChevronRight, CreditCard, DatabaseBackup, FileText, Gauge, Languages, LogOut, Menu, Monitor, Moon, Package, Server as ServerIcon, Settings, ShoppingCart, Sun, Terminal, Users, X, Zap } from 'lucide-react';
+import { Activity, Archive, Bell, Blocks, Boxes, ChevronRight, CreditCard, DatabaseBackup, FileText, Gauge, Languages, LogOut, Menu, Monitor, Moon, Package, Server as ServerIcon, Settings, ShoppingCart, Sun, Terminal, Users, X, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n';
@@ -40,6 +40,7 @@ export function AppShell({ children, servers, capacity, session, onLogout }: { c
   const contextualNav = activeServer ? [
     { to: serverPath('console'), label: tr('Console', 'Console'), icon: Terminal },
     { to: serverPath('files'), label: tr('File', 'Files'), icon: FileText },
+    { to: serverPath('modpacks'), label: 'Modpack', icon: Archive },
     ...(['paper', 'purpur', 'fabric'].includes(activeServer.runtime) ? [{ to: serverPath('addons'), label: activeServer.runtime === 'fabric' ? 'Mod' : 'Plugin', icon: Blocks }] : []),
     { to: serverPath('backups'), label: tr('Backup', 'Backups'), icon: DatabaseBackup },
     { to: serverPath('schedules'), label: tr('Jadwal', 'Schedules'), icon: Zap },
@@ -93,7 +94,7 @@ function breadcrumb(path: string, serverName: string | undefined, tr: (id: strin
   const parts = path.split('/').filter(Boolean);
   if (parts[0] !== 'servers') return ['MyPanel'];
   if (parts.length === 1) return [tr('Server', 'Servers')];
-  const labels: Record<string, string> = { console: 'Console', files: tr('File', 'Files'), addons: 'Add-ons', backups: tr('Backup', 'Backups'), schedules: tr('Jadwal', 'Schedules'), settings: tr('Pengaturan', 'Settings') };
+  const labels: Record<string, string> = { console: 'Console', files: tr('File', 'Files'), modpacks: 'Modpack', addons: 'Add-ons', backups: tr('Backup', 'Backups'), schedules: tr('Jadwal', 'Schedules'), settings: tr('Pengaturan', 'Settings') };
   return [tr('Server', 'Servers'), serverName ?? tr('Tidak diketahui', 'Unknown'), labels[parts[2]] ?? 'Console'];
 }
 

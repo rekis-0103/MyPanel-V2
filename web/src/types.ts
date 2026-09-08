@@ -89,6 +89,9 @@ export type MetricHistory = { resolution: '1m' | '15m'; items: MetricSample[] };
 export type Notification = { id: string; serverId: string | null; severity: 'info' | 'warning' | 'danger'; kind: string; title: string; message: string; active: boolean; readAt: string | null; createdAt: string; resolvedAt: string | null };
 export type Addon = { id: string; serverId: string; provider: 'modrinth' | 'curseforge'; projectId: string; versionId: string; name: string; fileName: string; fileHash: string; managedPath: string; status: 'installing' | 'installed' | 'failed'; createdAt: string; updatedAt: string };
 export type AddonSearchResult = { provider: 'modrinth' | 'curseforge'; projectId: string; name: string; description: string; iconUrl: string; downloads: number; latestVersion?: string };
+export type Modpack = { serverId: string; provider: 'curseforge'; projectId: string; slug: string; fileId: string; name: string; versionName: string; iconUrl: string; runtime: 'forge' | 'neoforge'; minecraftVersion: string; javaVersion: 21 | 25; status: 'installing' | 'installed'; installedAt: string | null; createdAt: string; updatedAt: string };
+export type ModpackSearchResult = { projectId: string; slug: string; name: string; summary: string; iconUrl: string; downloads: number };
+export type ModpackVersion = { fileId: string; name: string; fileName: string; runtime: 'forge' | 'neoforge'; minecraftVersion: string; javaVersion: 21 | 25; releaseType: 'release' | 'beta' | 'alpha' | 'unknown'; publishedAt: string };
 
 export type MinecraftVersion = { id: string; java: 21 | 25 };
 export type Runtime = { id: string; name: string; java: number; javaVersions: Array<21 | 25>; icon?: 'grass' | 'feather' | 'crystal' | 'anvil'; versions?: MinecraftVersion[] };

@@ -17,6 +17,7 @@ import { ServerSettings } from './pages/ServerSettings';
 import { ServersPage } from './pages/Servers';
 import { AdminCapacity, AdminPackages, AdminUsers, Billing, Marketplace } from './pages/Hosting';
 import { Landing } from './pages/Landing';
+import { Modpacks } from './pages/Modpacks';
 import type { ActionResponse, Capacity, Runtime, Server, Session } from './types';
 
 const ConsolePage = lazy(() => import('./pages/Console').then((module) => ({ default: module.Console })));
@@ -74,6 +75,7 @@ export function App() {
     <Route path="servers/:serverId/console" element={<ServerPage servers={servers}>{(server) => <Suspense fallback={<div className="surface"><span className="spinner" /></div>}><ConsolePage server={server} csrfToken={session.csrfToken} busy={!!pendingActions[server.id]} act={act} /></Suspense>}</ServerPage>} />
     <Route path="servers/:serverId/files" element={<ServerPage servers={servers}>{(server) => <FileManager server={server} notify={notify} onError={handleError} />}</ServerPage>} />
     <Route path="servers/:serverId/addons" element={<ServerPage servers={servers}>{(server) => <Addons server={server} notify={notify} onError={handleError} />}</ServerPage>} />
+    <Route path="servers/:serverId/modpacks" element={<ServerPage servers={servers}>{(server) => <Modpacks server={server} reload={loadServers} notify={notify} onError={handleError} />}</ServerPage>} />
     <Route path="servers/:serverId/backups" element={<ServerPage servers={servers}>{(server) => <Backups server={server} notify={notify} onError={handleError} />}</ServerPage>} />
     <Route path="servers/:serverId/schedules" element={<ServerPage servers={servers}>{(server) => <Schedules server={server} notify={notify} onError={handleError} />}</ServerPage>} />
     <Route path="servers/:serverId/settings" element={<ServerPage servers={servers}>{(server) => <ServerSettings server={server} reload={loadServers} notify={notify} onError={handleError} remove={remove} />}</ServerPage>} />

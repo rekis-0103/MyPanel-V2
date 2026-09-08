@@ -39,7 +39,11 @@ func (a *app) runJobWorker(ctx context.Context) {
 }
 
 func (a *app) executeJob(parent context.Context, item job) {
-	ctx, cancel := context.WithTimeout(parent, 15*time.Minute)
+	timeout := 15 * time.Minute
+	if item.Action == "modpack_install" {
+		timeout = 45 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	serverItem, err := a.store.get(ctx, item.ServerID)
 	if err != nil {
@@ -48,24 +52,33 @@ func (a *app) executeJob(parent context.Context, item job) {
 		_ = a.store.finishJob(finishCtx, item.ID, map[string]any{}, err)
 		return
 	}
-	transition := map[string]string{"provision": "installing", "start": "starting", "restart": "stopping", "stop": "stopping", "delete": "deleting", "release": "deleting", "update": "installing"}[item.Action]
+	transition := map[string]string{"provision": "installing", "start": "starting", "restart": "stopping", "stop": "stopping", "delete": "deleting", "release": "deleting", "update": "installing", "modpack_install": "installing"}[item.Action]
 	if transition != "" {
 		_ = a.store.setObservedState(ctx, item.ServerID, transition, nil)
 	}
 	spec := agentServerSpec{ID: serverItem.ID, Runtime: serverItem.Runtime, Version: serverItem.Version, JavaVersion: serverItem.JavaVersion,
 		MemoryMB: serverItem.MemoryMB, CPU: serverItem.CPU, DiskMB: serverItem.DiskMB,
 		BindIP: serverItem.BindIP, Port: serverItem.Port, Config: serverItem.Config}
+	if installed, modpackErr := a.store.getModpack(ctx, item.ServerID); modpackErr == nil {
+		spec.Modpack = &agentModpackSpec{Provider: installed.Provider, Slug: installed.Slug, FileID: installed.FileID}
+	} else if !errors.Is(modpackErr, pgx.ErrNoRows) {
+		err = modpackErr
+	}
 	var result any = map[string]any{}
 	if message := lifecycleActionMessage(item.Action); message != "" {
 		a.recordConsoleEvent(ctx, item.ServerID, message)
 	}
-	switch item.Action {
-	case "provision", "update":
+	switch {
+	case err != nil:
+		// Loading the managed runtime definition failed; finish the job below.
+	case item.Action == "modpack_install":
+		err = a.executeModpackInstall(ctx, item, serverItem, spec, &result)
+	case item.Action == "provision" || item.Action == "update":
 		err = a.agent.serverAction(ctx, item.ServerID, "provision", spec, &result)
 		if err == nil {
 			_ = a.store.setObservedState(ctx, item.ServerID, "offline", nil)
 		}
-	case "start", "stop", "restart":
+	case item.Action == "start" || item.Action == "stop" || item.Action == "restart":
 		err = a.agent.serverAction(ctx, item.ServerID, item.Action, spec, &result)
 		if err == nil && (item.Action == "start" || item.Action == "restart") {
 			_, err = a.waitForServerRunning(ctx, item.ServerID)
@@ -84,7 +97,7 @@ func (a *app) executeJob(parent context.Context, item job) {
 				}
 			}
 		}
-	case "delete":
+	case item.Action == "delete":
 		var payload struct {
 			PurgeData bool `json:"purgeData"`
 		}
@@ -93,7 +106,7 @@ func (a *app) executeJob(parent context.Context, item job) {
 		if err == nil {
 			err = a.store.finalizeDelete(ctx, item.ServerID)
 		}
-	case "release":
+	case item.Action == "release":
 		err = a.agent.serverAction(ctx, item.ServerID, "delete", map[string]any{"purgeData": false}, &result)
 		if err == nil {
 			err = a.store.finalizeRelease(ctx, item.ServerID)
@@ -159,7 +172,11 @@ func (a *app) recordConsoleEvent(ctx context.Context, serverID, message string) 
 }
 
 func (a *app) waitForServerRunning(parent context.Context, serverID string) (agentState, error) {
-	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
+	return a.waitForServerRunningWithin(parent, serverID, 10*time.Minute)
+}
+
+func (a *app) waitForServerRunningWithin(parent context.Context, serverID string, timeout time.Duration) (agentState, error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()

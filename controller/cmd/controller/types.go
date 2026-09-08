@@ -179,16 +179,23 @@ type capacitySummary struct {
 }
 
 type agentServerSpec struct {
-	ID          string          `json:"id"`
-	Runtime     string          `json:"runtime"`
-	Version     string          `json:"version"`
-	JavaVersion int             `json:"javaVersion"`
-	MemoryMB    int             `json:"memoryMb"`
-	CPU         int             `json:"cpu"`
-	DiskMB      int             `json:"diskMb"`
-	BindIP      string          `json:"bindIp"`
-	Port        int             `json:"port"`
-	Config      json.RawMessage `json:"config"`
+	ID          string            `json:"id"`
+	Runtime     string            `json:"runtime"`
+	Version     string            `json:"version"`
+	JavaVersion int               `json:"javaVersion"`
+	MemoryMB    int               `json:"memoryMb"`
+	CPU         int               `json:"cpu"`
+	DiskMB      int               `json:"diskMb"`
+	BindIP      string            `json:"bindIp"`
+	Port        int               `json:"port"`
+	Config      json.RawMessage   `json:"config"`
+	Modpack     *agentModpackSpec `json:"modpack,omitempty"`
+}
+
+type agentModpackSpec struct {
+	Provider string `json:"provider"`
+	Slug     string `json:"slug"`
+	FileID   string `json:"fileId"`
 }
 
 type agentState struct {
@@ -242,6 +249,24 @@ type serverAddon struct {
 	Metadata    json.RawMessage `json:"metadata"`
 	CreatedAt   time.Time       `json:"createdAt"`
 	UpdatedAt   time.Time       `json:"updatedAt"`
+}
+
+type serverModpack struct {
+	ServerID         string     `json:"serverId"`
+	Provider         string     `json:"provider"`
+	ProjectID        string     `json:"projectId"`
+	Slug             string     `json:"slug"`
+	FileID           string     `json:"fileId"`
+	Name             string     `json:"name"`
+	VersionName      string     `json:"versionName"`
+	IconURL          string     `json:"iconUrl"`
+	Runtime          string     `json:"runtime"`
+	MinecraftVersion string     `json:"minecraftVersion"`
+	JavaVersion      int        `json:"javaVersion"`
+	Status           string     `json:"status"`
+	InstalledAt      *time.Time `json:"installedAt"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 type consoleEvent struct {

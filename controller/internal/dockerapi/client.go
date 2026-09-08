@@ -31,6 +31,13 @@ type Spec struct {
 	DataPath             string
 	PerformancePatchPath string
 	Config               map[string]any
+	Modpack              *ModpackSpec
+}
+
+type ModpackSpec struct {
+	Provider string
+	Slug     string
+	FileID   string
 }
 
 type State struct {
@@ -453,11 +460,18 @@ func Name(id string) string { return "mypanel-" + strings.ReplaceAll(id, "-", ""
 func ContainerSpec(image string, spec Spec) map[string]any {
 	heapMB := max(768, spec.MemoryMB*80/100)
 	binds := []string{spec.DataPath + ":/data"}
+	runtimeType := strings.ToUpper(spec.Runtime)
+	if spec.Modpack != nil {
+		runtimeType = "AUTO_CURSEFORGE"
+	}
 	environment := []string{
-		"EULA=TRUE", "TYPE=" + strings.ToUpper(spec.Runtime), "VERSION=" + spec.Version,
+		"EULA=TRUE", "TYPE=" + runtimeType, "VERSION=" + spec.Version,
 		"MEMORY=" + strconv.Itoa(heapMB) + "M", "ENABLE_RCON=false", "CREATE_CONSOLE_IN_PIPE=true",
 		"CONSOLE_IN_NAMED_PIPE=/data/.mypanel-console-in",
 		"TERM=xterm-256color", "COLORTERM=truecolor",
+	}
+	if spec.Modpack != nil {
+		environment = append(environment, "CF_SLUG="+spec.Modpack.Slug, "CF_FILE_ID="+spec.Modpack.FileID)
 	}
 	if spec.PerformancePatchPath != "" {
 		binds = append(binds, spec.PerformancePatchPath+":/mypanel/patches:ro")
@@ -489,7 +503,7 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 		"StdinOnce":    false,
 		"Env":          environment,
 		"ExposedPorts": map[string]any{"25565/tcp": map[string]any{}},
-		"Labels":       map[string]string{"mypanel.managed": "true", "mypanel.server-id": spec.ID},
+		"Labels":       containerLabels(spec),
 		"HostConfig": map[string]any{
 			"Memory":        int64(spec.MemoryMB) * 1024 * 1024,
 			"MemorySwap":    int64(spec.MemoryMB) * 1024 * 1024,
@@ -503,6 +517,16 @@ func ContainerSpec(image string, spec Spec) map[string]any {
 			"CapAdd":        []string{"CHOWN", "SETGID", "SETUID"},
 		},
 	}
+}
+
+func containerLabels(spec Spec) map[string]string {
+	labels := map[string]string{"mypanel.managed": "true", "mypanel.server-id": spec.ID}
+	if spec.Modpack != nil {
+		labels["mypanel.modpack-provider"] = spec.Modpack.Provider
+		labels["mypanel.modpack-slug"] = spec.Modpack.Slug
+		labels["mypanel.modpack-file-id"] = spec.Modpack.FileID
+	}
+	return labels
 }
 
 func dockerError(operation string, status int, body []byte) error {

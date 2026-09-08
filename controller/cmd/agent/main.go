@@ -51,6 +51,13 @@ type serverSpec struct {
 	BindIP      string         `json:"bindIp"`
 	Port        int            `json:"port"`
 	Config      map[string]any `json:"config"`
+	Modpack     *modpackSpec   `json:"modpack,omitempty"`
+}
+
+type modpackSpec struct {
+	Provider string `json:"provider"`
+	Slug     string `json:"slug"`
+	FileID   string `json:"fileId"`
 }
 
 type apiError struct {
@@ -193,10 +200,14 @@ func (a *agent) server(w http.ResponseWriter, r *http.Request) {
 			internal(w, err)
 			return
 		}
+		var modpack *dockerapi.ModpackSpec
+		if input.Modpack != nil {
+			modpack = &dockerapi.ModpackSpec{Provider: input.Modpack.Provider, Slug: input.Modpack.Slug, FileID: input.Modpack.FileID}
+		}
 		err = a.docker.Provision(ctx, dockerapi.Spec{ID: id, Runtime: input.Runtime, Version: input.Version,
 			Image:    a.cfg.JavaImages[input.JavaVersion],
 			MemoryMB: input.MemoryMB, CPU: input.CPU, BindIP: input.BindIP, Port: input.Port,
-			DataPath: dataPath, PerformancePatchPath: performancePatchPath, Config: input.Config})
+			DataPath: dataPath, PerformancePatchPath: performancePatchPath, Config: input.Config, Modpack: modpack})
 		if err != nil {
 			internal(w, err)
 			return
@@ -479,8 +490,22 @@ func validateSpec(pathID string, input serverSpec) error {
 	if err := validateAgentConfig(input.Config); err != nil {
 		return err
 	}
+	if input.Modpack != nil {
+		if input.Modpack.Provider != "curseforge" || !validCurseForgeSlug(input.Modpack.Slug) || !numericIdentifier(input.Modpack.FileID) {
+			return errors.New("modpack specification is invalid")
+		}
+		if input.Runtime != "forge" && input.Runtime != "neoforge" {
+			return errors.New("modpack runtime is invalid")
+		}
+	}
 	return nil
 }
+
+var curseForgeSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,79}$`)
+var numericIdentifierPattern = regexp.MustCompile(`^[1-9][0-9]{0,18}$`)
+
+func validCurseForgeSlug(value string) bool { return curseForgeSlugPattern.MatchString(value) }
+func numericIdentifier(value string) bool   { return numericIdentifierPattern.MatchString(value) }
 
 func validateAgentConfig(input map[string]any) error {
 	for key, value := range input {

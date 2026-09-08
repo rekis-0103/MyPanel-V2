@@ -174,6 +174,28 @@ func TestValidateSpecRejectsUnsupportedJava(t *testing.T) {
 	}
 }
 
+func TestValidateSpecRestrictsManagedModpacks(t *testing.T) {
+	valid := serverSpec{ID: testServerID, Runtime: "neoforge", Version: "1.21.1", JavaVersion: 21, MemoryMB: 4096, CPU: 2, DiskMB: 10240, BindIP: "0.0.0.0", Port: 25565, Config: map[string]any{}, Modpack: &modpackSpec{Provider: "curseforge", Slug: "all-the-mods-10", FileID: "7083319"}}
+	if err := validateSpec(testServerID, valid); err != nil {
+		t.Fatalf("valid CurseForge modpack rejected: %v", err)
+	}
+	for _, modpack := range []*modpackSpec{
+		{Provider: "modrinth", Slug: "all-the-mods-10", FileID: "7083319"},
+		{Provider: "curseforge", Slug: "../../escape", FileID: "7083319"},
+		{Provider: "curseforge", Slug: "all-the-mods-10", FileID: "file-id"},
+	} {
+		candidate := valid
+		candidate.Modpack = modpack
+		if err := validateSpec(testServerID, candidate); err == nil {
+			t.Fatalf("unsafe modpack accepted: %+v", modpack)
+		}
+	}
+	valid.Runtime = "paper"
+	if err := validateSpec(testServerID, valid); err == nil {
+		t.Fatal("Paper runtime accepted a managed modpack")
+	}
+}
+
 func TestBoundedCPUPercentUsesConfiguredVCPULimit(t *testing.T) {
 	if got := boundedCPUPercent(612.5, 2); got != 200 {
 		t.Fatalf("bounded CPU = %v, want 200", got)

@@ -292,6 +292,24 @@ func TestContainerSpecUsesSelectedJavaImage(t *testing.T) {
 	}
 }
 
+func TestContainerSpecPinsCurseForgeModpackWithoutExposingCredential(t *testing.T) {
+	spec := Spec{ID: "2d86389b-f055-4b80-9d8b-daeb83f5fa15", Runtime: "neoforge", Version: "1.21.1", Image: "itzg/minecraft-server:java21", MemoryMB: 4096, CPU: 2, BindIP: "0.0.0.0", Port: 25565, DataPath: "/data", Config: map[string]any{}, Modpack: &ModpackSpec{Provider: "curseforge", Slug: "all-the-mods-10", FileID: "7083319"}}
+	value := ContainerSpec(spec.Image, spec)
+	joined := strings.Join(value["Env"].([]string), "\n")
+	for _, expected := range []string{"TYPE=AUTO_CURSEFORGE", "CF_SLUG=all-the-mods-10", "CF_FILE_ID=7083319", "VERSION=1.21.1"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("%q missing from %s", expected, joined)
+		}
+	}
+	if strings.Contains(joined, "CF_API_KEY") {
+		t.Fatalf("CurseForge credential leaked into the game container: %s", joined)
+	}
+	labels := value["Labels"].(map[string]string)
+	if labels["mypanel.modpack-provider"] != "curseforge" || labels["mypanel.modpack-file-id"] != "7083319" {
+		t.Fatalf("modpack labels = %#v", labels)
+	}
+}
+
 func TestProvisionPullsSelectedJavaImage(t *testing.T) {
 	requests := make([]string, 0, 3)
 	client := &Client{http: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

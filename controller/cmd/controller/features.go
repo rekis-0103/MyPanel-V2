@@ -77,6 +77,13 @@ func (a *app) serverFeature(w http.ResponseWriter, r *http.Request, serverID str
 			return
 		}
 		a.addonRoutes(w, r, item, parts[1:])
+	case "modpacks":
+		item, err := a.store.getForSession(r.Context(), serverID, session)
+		if err != nil {
+			notFound(w, r)
+			return
+		}
+		a.modpackRoutes(w, r, item, parts[1:])
 	case "console":
 		a.console(w, r, serverID)
 	default:

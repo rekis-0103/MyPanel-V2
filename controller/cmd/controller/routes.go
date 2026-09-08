@@ -29,6 +29,9 @@ var supportedMinecraftVersions = []catalogVersion{
 	{ID: "1.21.4", Java: 21},
 	{ID: "1.21.1", Java: 21},
 	{ID: "1.20.6", Java: 21},
+	{ID: "1.20.4", Java: 21},
+	{ID: "1.20.2", Java: 21},
+	{ID: "1.20.1", Java: 21},
 }
 
 func requiredJavaVersion(version string) int {

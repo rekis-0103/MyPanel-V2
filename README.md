@@ -39,6 +39,9 @@ pengganti Pterodactyl yang kompatibel langsung.
 - Manager plugin/mod terkelola dengan pencarian kompatibel dari Modrinth,
   adapter CurseForge opsional, dependency confirmation, checksum verification,
   install/update/remove durable, dan penanda restart-required.
+- Manager modpack khusus CurseForge dengan pilihan file yang kompatibel,
+  penyesuaian otomatis Forge/NeoForge, Minecraft, dan Java, backup pra-perubahan,
+  konfirmasi nama server, verifikasi boot, serta rollback bila instalasi gagal.
 - Agent privat dengan mTLS. Controller dan web tidak menerima Docker socket.
 - Compose dengan secret files, network terpisah, filesystem read-only, capability
   minimum, log rotation, serta health/readiness check. Agent hanya mempertahankan
@@ -176,6 +179,20 @@ services:
 
 Jangan menaruh key di `.env`, commit, issue, atau log. Setelah mengubah override,
 jalankan `docker compose up -d --build controller web`.
+
+Key yang sama mengaktifkan halaman **Modpack** pada navigasi server. Browser
+hanya menerima metadata katalog; credential tidak pernah dikirim ke browser,
+agent, atau container Minecraft. Pengguna memilih file manifest biasa dari
+CurseForge, lalu controller memvalidasi ulang project, file, loader, versi
+Minecraft, dan Java. Server dihentikan dan backup `pre_modpack` dibuat sebelum
+runtime diganti menjadi `AUTO_CURSEFORGE` dengan file ID yang dipin. MyPanel
+menyalakan hasil instalasi sampai health check Minecraft siap. Jika sebelumnya
+server offline, server dihentikan kembali setelah verifikasi; bila instalasi
+gagal, data dan definisi runtime sebelumnya dipulihkan dari backup.
+
+Pergantian ke Forge/NeoForge tidak menghapus world atau file plugin, tetapi
+plugin Paper/Purpur tidak dijalankan oleh mod loader. Pastikan kapasitas disk
+mencukupi karena arsip backup dan file modpack tetap memakai storage node.
 
 ## Development dan quality gate
 

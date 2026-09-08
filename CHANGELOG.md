@@ -8,6 +8,9 @@ Perubahan penting proyek ini dicatat di sini. Format mengikuti
 
 ### Added
 
+- CurseForge-only modpack discovery and pinned installation with compatible
+  Forge/NeoForge, Minecraft, and Java selection; exact-name confirmation,
+  automatic pre-change backup, readiness verification, and failure rollback.
 - Batch server metrics, Minecraft player/latency ping, 24-hour one-minute
   history, seven-day rollups, and deduplicated in-panel capacity/runtime alerts.
 - Managed Modrinth plugin/mod discovery and checksum-verified install, update,

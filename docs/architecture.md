@@ -55,6 +55,9 @@
   the agent and exposed only to owners through the authenticated capacity API.
 - Navigation is role-aware: customers receive marketplace and subscription
   views; administrators receive account, package, capacity, and fleet controls.
+- The server-scoped Modpack page searches CurseForge, exposes only compatible
+  Forge/NeoForge manifest files, previews the resulting runtime, and requires
+  the exact server name before replacement can be submitted.
 
 ## Public contracts
 
@@ -154,9 +157,23 @@
   filename, destination, size, symlink state, and provider checksum are checked
   before an atomic rename. Provider credentials never cross to the browser or
   agent.
+- CurseForge modpack metadata follows the same controller trust boundary, but
+  installation is delegated to the allowlisted Minecraft image through
+  `TYPE=AUTO_CURSEFORGE`, `CF_SLUG`, and a pinned `CF_FILE_ID`. The controller
+  re-resolves the project and file and requires the Minecraft Modpacks class;
+  neither the controller API key nor an arbitrary download URL crosses into
+  the job payload, agent, or game container.
+- A modpack replacement atomically records the target definition, updates the
+  server runtime/version/Java tuple, reserves a `pre_modpack` backup, and queues
+  one `modpack_install` job. The worker stops the old runtime, creates the
+  backup, provisions and boots the selected pack, and only marks it installed
+  after readiness. A failed installation restores the backup and previous
+  definition; an originally offline server is stopped after verification.
 - Backup restore uses a durable pre-restore snapshot and verifies the stored
   archive SHA-256 before extraction. Scheduled backups are associated with their
   schedule and pruned to the newest seven completed snapshots.
+- `server_modpacks` stores the single managed CurseForge project/file selection
+  per server. It cascades with the server and never stores provider secrets.
 
 ## Deployment
 

@@ -102,6 +102,15 @@ menghapus direktori data.
 - `POST /api/v1/servers/{id}/schedules/{scheduleId}/run` — jalankan sekarang.
 - `DELETE /api/v1/servers/{id}/schedules/{scheduleId}`
 - `GET /api/v1/servers/{id}/addons/search?provider=modrinth|curseforge&q=...`
+- `GET /api/v1/servers/{id}/modpacks` returns the active CurseForge modpack or
+  `{ "item": null }`.
+- `GET /api/v1/servers/{id}/modpacks/search?q=...` searches Minecraft Modpacks
+  projects on CurseForge.
+- `GET /api/v1/servers/{id}/modpacks/{projectId}/versions` lists manifest files
+  compatible with the panel's Forge/NeoForge, Minecraft, and Java catalog.
+- `POST /api/v1/servers/{id}/modpacks` queues a runtime replacement. The body
+  contains `projectId`, `fileId`, and `confirmation`, which must exactly match
+  the server name.
 - `GET|POST /api/v1/servers/{id}/addons` — inventori dan install/update.
 - `DELETE /api/v1/servers/{id}/addons/{addonId}`
 - `GET /api/v1/notifications`, `POST /api/v1/notifications` dengan
@@ -141,3 +150,14 @@ target `plugins/`/`mods/`, serta SHA-512 Modrinth atau SHA-1 CurseForge. Field
 `restartRequired` pada server dibersihkan setelah start/restart berhasil.
 Install dan pencarian ditolak untuk runtime tanpa loader; saat ini runtime yang
 didukung adalah Paper, Purpur, dan Fabric.
+
+Instalasi modpack hanya menerima provider CurseForge dan mengembalikan `202`
+dengan objek `server`, `modpack`, `backup`, dan `job`. Controller mengambil
+ulang metadata project serta file dari API resmi; ID, kategori modpack,
+ketersediaan, ownership file, loader, versi Minecraft, dan Java tidak dipercaya
+dari browser. File server-pack turunan tidak dipilih karena runtime
+`AUTO_CURSEFORGE` membutuhkan file manifest utama. Sebelum mengganti container,
+worker membuat backup `pre_modpack`, memulai hasil instalasi sampai Minecraft
+siap, lalu mengembalikan desired state sebelumnya. Kegagalan sebelum hasil baru
+terverifikasi memicu pemulihan data dan runtime lama. Tanpa API key endpoint
+katalog/install mengembalikan `503 provider_not_configured`.

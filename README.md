@@ -10,7 +10,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?style=flat-square&logo=vite)](https://vitejs.dev)
 [![Docker](https://img.shields.io/badge/Docker-Compose_v2-2496ED?style=flat-square&logo=docker)](https://docker.com)
 [![Security](https://img.shields.io/badge/Security-mTLS_Agent_Isolated-3fb950?style=flat-square&logo=shield)](docs/architecture.md)
-[![Status](https://img.shields.io/badge/Status-v0.2.0--dev-f59e0b?style=flat-square)](#status-proyek)
+[![Release](https://img.shields.io/badge/Release-v1.0.0-3fb950?style=flat-square&logo=github)](https://github.com/rekis-0103/MyPanel-V2/releases/tag/v1.0.0)
 
 <p align="center">
   <a href="#-fitur-utama">Fitur Utama</a> •

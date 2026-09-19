@@ -6,7 +6,7 @@ Format pencatatan mengikuti panduan [Keep a Changelog](https://keepachangelog.co
 
 ---
 
-## 🚀 [v0.2.0] — 2026-09-19
+## 🚀 [v1.0.0] — 2026-09-19
 
 ### 🎨 Desain & Tampilan (Minecraft Themed UI)
 - **Minecraft Themed Landing Page**: Desain landing page publik baru dengan kartu showcase server interaktif, preview status `🟢 ONLINE`, logo Minecraft Grass Cube, live meter TPS 20.0, format MOTD Minecraft asli, dan tombol 1-klik copy IP.
@@ -41,5 +41,5 @@ Format pencatatan mengikuti panduan [Keep a Changelog](https://keepachangelog.co
 
 ---
 
-[v0.2.0]: https://github.com/rekis-0103/MyPanel-V2/compare/v0.1.0...feat/mypanel-v1
+[v1.0.0]: https://github.com/rekis-0103/MyPanel-V2/releases/tag/v1.0.0
 [v0.1.0]: https://github.com/rekis-0103/MyPanel-V2/releases/tag/v0.1.0

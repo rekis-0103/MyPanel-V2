@@ -198,7 +198,10 @@ export function Landing() {
                   <div className="showcase-server-info">
                     <h3>Craftopia Survival SMP</h3>
                     <p className="showcase-motd">
-                      §a§lValhalla SMP §7| §eNo Lag §7• §bCustom Enchants §7• §a1.21.1
+                      <span className="motd-green">Valhalla SMP</span> <span className="motd-dim">|</span>{' '}
+                      <span className="motd-yellow">No Lag</span> <span className="motd-dim">•</span>{' '}
+                      <span className="motd-cyan">Custom Enchants</span> <span className="motd-dim">•</span>{' '}
+                      <span className="motd-green">1.21.1</span>
                     </p>
                   </div>
                   <button

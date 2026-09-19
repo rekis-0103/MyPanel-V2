@@ -232,7 +232,7 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
 
             <div className="login-quick-hint">
               <span>
-                💡 {tr('Akun bawaan sistem', 'Default account')}: <code>admin</code> / <code>admin123</code>
+                💡 {tr('Masuk dengan akun Anda atau klik Daftar untuk membuat akun baru.', 'Sign in with your account or click Register to create a new one.')}
               </span>
             </div>
           </form>

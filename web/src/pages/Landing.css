@@ -920,6 +920,7 @@
 
 .landing-workflow {
   width: min(var(--landing-width), calc(100% - 48px));
+  margin: 0 auto;
   padding: 110px 0;
   border-top: 1px solid var(--mc-obsidian-border);
 }
@@ -946,6 +947,8 @@
 }
 .step-card {
   height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: 28px;
   border-radius: 12px;
   background: rgba(14, 20, 28, 0.6);

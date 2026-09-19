@@ -1,97 +1,90 @@
-# VM Update Runbook
+# 🔄 Runbook Pembaruan VM (Continuous Deployment)
 
-Runbook ini memperbarui checkout `~/MyPanel-V2` dari branch GitHub yang sedang
-dipakai tanpa menghapus `.env`, secret, world, backup, atau named volume.
+Runbook ini menjelaskan tata cara memperbarui instalasi **MyPanel V2** pada VM Linux langsung dari commit GitHub terbaru tanpa menghapus file konfigurasi `.env`, secret lokal, world server Minecraft, arsip backup, maupun data volume PostgreSQL/Redis.
 
-## Update manual
+---
 
-Pastikan perubahan yang ingin dipasang sudah di-push ke branch GitHub yang
-dilacak VM, lalu jalankan:
+## ⚡ 1. Pembaruan Manual Cepat
+
+Pastikan perubahan telah di-push ke remote branch GitHub (`feat/mypanel-v1` atau `main`), kemudian jalankan perintah berikut pada terminal VM:
 
 ```sh
 cd ~/MyPanel-V2
 sh scripts/update.sh
 ```
 
-Script menolak kondisi berikut agar update tidak menimpa pekerjaan lokal:
+### 🛡️ Validasi Otomatis `update.sh`:
+Skrip secara proaktif menolak eksekusi jika menemukan kondisi berisiko:
+1. Terdapat perubahan lokal yang belum di-commit (`untracked` atau `dirty working tree`).
+2. Branch remote tidak ditemukan atau bukan merupakan *fast-forward merge*.
+3. Sedang ada proses update lain yang berjalan (dilindungi *atomic directory lock*).
 
-- file tracked atau untracked yang belum di-commit;
-- branch remote yang hilang;
-- histori remote yang memerlukan merge atau force update;
-- update lain yang masih berjalan.
+### 🚀 Alur Kerja Pembaruan:
+```text
+Fetch Origin ➔ Fast-Forward Merge ➔ Docker Build (--pull) ➔ Migrasi PostgreSQL ➔ Recreate Containers ➔ Healthcheck Verification (Ready)
+```
 
-Urutan rollout adalah fetch, fast-forward, validasi Compose, build image,
-migrasi additive/idempotent, penggantian container, dan readiness check selama
-maksimal 60 detik. Jika build gagal, container lama tetap berjalan. Jika rollout
-atau readiness gagal, commit tersebut belum ditandai berhasil dan timer akan
-mencoba rollout kembali. Periksa output dan log yang dicetak script sebelum
-mencoba perubahan lain.
+> [!TIP]
+> Jika Anda ingin memaksa pembaruan ulang tanpa ada commit baru (misalnya untuk memperbarui dependensi base image Docker), gunakan:
+> ```sh
+> MYPANEL_UPDATE_FORCE=1 sh scripts/update.sh
+> ```
 
-Status dan log dapat diperiksa dengan:
+---
+
+## 📊 2. Memeriksa Status & Log Pasca-Update
 
 ```sh
+# Melihat status kontainer dan port yang aktif
 docker compose ps
-docker compose logs --tail=200 controller agent web migrate
+
+# Memantau log gabungan controller dan agent
+docker compose logs --tail=100 -f controller agent web
+
+# Memeriksa endpoint kesiapan internal
+curl -sS http://127.0.0.1:8080/api/v1/health/ready
 ```
 
-Jalankan ulang rollout tanpa commit Git baru, misalnya untuk menarik base image
-baru:
+---
+
+## ⏰ 3. Pembaruan Otomatis dengan systemd User Timer
+
+Anda dapat mengonfigurasi VM agar memeriksa dan menerapkan pembaruan dari GitHub secara otomatis setiap interval waktu tertentu menggunakan `systemd` user timer:
 
 ```sh
-MYPANEL_UPDATE_FORCE=1 sh scripts/update.sh
-```
-
-## Update otomatis dengan systemd user timer
-
-Template bawaan mengasumsikan repository berada di `~/MyPanel-V2` dan mengikuti
-branch yang sedang di-checkout. Jika lokasi repository berbeda, edit file
-service sebelum menyalinnya. Untuk memaksa branch tertentu, tambahkan
-`Environment=MYPANEL_UPDATE_BRANCH=<branch>` pada bagian `[Service]`.
-
-```sh
+# 1. Salin unit service dan timer
 mkdir -p ~/.config/systemd/user
 cp deploy/systemd/mypanel-update.service ~/.config/systemd/user/
 cp deploy/systemd/mypanel-update.timer ~/.config/systemd/user/
+
+# 2. Reload daemon dan aktifkan timer
 systemctl --user daemon-reload
 systemctl --user enable --now mypanel-update.timer
+
+# 3. Pastikan timer tetap berjalan saat session SSH ditutup
+sudo loginctl enable-linger "$USER"
+
+# 4. Verifikasi status timer aktif
 systemctl --user list-timers mypanel-update.timer
 ```
 
-Agar timer user tetap berjalan setelah logout SSH, aktifkan linger satu kali:
-
+### Memeriksa Eksekusi Otomatis:
 ```sh
-sudo loginctl enable-linger "$USER"
-```
-
-Pantau eksekusi:
-
-```sh
-systemctl --user status mypanel-update.timer
 journalctl --user -u mypanel-update.service -n 100 --no-pager
 ```
 
-Jalankan update segera tanpa menunggu timer:
+---
 
-```sh
-systemctl --user start mypanel-update.service
-journalctl --user -u mypanel-update.service -n 100 --no-pager
-```
+## 🔐 4. Kebijakan Keamanan & Rollback
 
-Nonaktifkan otomatisasi:
+> [!WARNING]
+> Siapa pun yang memiliki hak akses push ke branch deployment dapat mengeksekusi kode di Docker host saat update otomatis berjalan. Pastikan:
+> - Mengaktifkan autentikasi dua faktor (2FA / MFA) pada akun GitHub Anda.
+> - Membatasi hak akses branch (`Branch protection rules`).
+> - Meninjau seluruh Pull Request sebelum di-merge ke branch deployment.
 
-```sh
-systemctl --user disable --now mypanel-update.timer
-```
-
-## Keamanan dan rollback
-
-Siapa pun yang dapat menulis ke branch deployment secara efektif dapat
-menjalankan kode pada Docker host saat timer menerapkan update. Lindungi akun
-GitHub dengan MFA, batasi maintainer, aktifkan branch protection, dan review
-perubahan sebelum merge. Jangan menyimpan credential push atau password SSH di
-unit systemd.
-
-Script sengaja tidak melakukan rollback Git otomatis. Migrasi bersifat additive
-dan container lama tetap kompatibel dengan kolom baru, tetapi rollback harus
-menggunakan commit yang sudah ditinjau dan diuji. Ambil backup database/world
-sebelum rilis yang mengubah schema atau format data.
+### Prosedur Rollback:
+Skrip `update.sh` sengaja **tidak** melakukan rollback otomatis bila terjadi error. Jika Anda perlu kembali ke commit sebelumnya:
+1. Lakukan `git checkout <commit_sha_stabil>`.
+2. Jalankan `docker compose up --build -d`.
+3. Validasi status container dengan `docker compose ps`.

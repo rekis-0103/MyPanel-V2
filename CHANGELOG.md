@@ -1,87 +1,45 @@
-# Changelog
+# 📜 Catatan Rilis (Changelog)
 
-Perubahan penting proyek ini dicatat di sini. Format mengikuti
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) dan versi mengikuti
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Semua perubahan penting pada proyek **MyPanel V2** dicatat dalam dokumen ini.
 
-## [Unreleased]
+Format pencatatan mengikuti panduan [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) dan penomoran versi mengacu pada [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### Added
+---
 
-- CurseForge-only modpack discovery and pinned installation with compatible
-  Forge/NeoForge, Minecraft, and Java selection; exact-name confirmation,
-  automatic pre-change backup, readiness verification, and failure rollback.
-- Batch server metrics, Minecraft player/latency ping, 24-hour one-minute
-  history, seven-day rollups, and deduplicated in-panel capacity/runtime alerts.
-- Managed Modrinth plugin/mod discovery and checksum-verified install, update,
-  dependency, remove jobs, plus an optional official CurseForge adapter.
-- Create-folder and safe rename/move, downloadable backups, pre-restore
-  snapshots, restore checksum verification, scheduled backup retention, and
-  schedule edit/enable/run-now controls.
-- GitHub Actions backend race/vet, frontend test/build, and Compose validation.
-- Multi-user registration and login, owner/user RBAC, server ownership, account
-  suspension, forced password change after admin reset, and session invalidation.
-- Simulated packages, atomic checkout, idempotent orders, 30-day subscriptions,
-  seven-day grace, renewal/reactivation, provisioning retry, and capacity checks.
-- Admin pages for accounts, packages, node capacity, server owner visibility,
-  server-ID search, and controlled ownership transfer.
-- Host CPU/RAM/disk/uptime telemetry over the private mTLS agent link.
-- Pilihan Java 21 atau Java 25 per server, dengan image allowlist di agent dan
-  migrasi kompatibel untuk server lama.
-- Script update VM berbasis fast-forward dengan build, migrasi eksplisit,
-  rollout Compose, readiness check, serta systemd timer opsional.
-- Navigasi server kontekstual, mode terang/gelap, grafik metric pada console,
-  alamat server yang mengikuti hostname panel, dan pengaturan startup tervalidasi.
+## 🚀 [v0.2.0] — 2026-09-19
 
-### Fixed
+### 🎨 Desain & Tampilan (Minecraft Themed UI)
+- **Minecraft Themed Landing Page**: Desain landing page publik baru dengan kartu showcase server interaktif, preview status `🟢 ONLINE`, logo Minecraft Grass Cube, live meter TPS 20.0, format MOTD Minecraft asli, dan tombol 1-klik copy IP.
+- **Cinematic Login Page**: Halaman login bertema senja portal nether dengan aurora borealis, kartu obsidian glassmorphic, switch instan masuk/daftar, dan tombol intip sandi (*password toggle*).
+- **Aset Grafis Lokal & Kepatuhan CSP**: Integrasi visual resolusi tinggi (floating island castle, nether portal, obsidian datacenter diorama) yang dibundel langsung via Vite untuk memenuhi `Content-Security-Policy`.
 
-- Server Paper dan Purpur menerima patch startup terkelola untuk mengaktifkan
-  cache pencarian entity saat ledakan. Patch dipasang read-only dan tidak ikut
-  file manager, backup, atau kuota disk server.
-- Live console memakai satu stream Docker persisten dan langsung merender tiap
-  pesan tanpa polling 100 ms atau buffer browser 120 ms; antrean xterm tetap
-  memberi backpressure saat burst besar. Command berjalan pada worker terpisah
-  dan masuk melalui named pipe bind-mounted tanpa membuat Docker exec baru;
-  pipe internal dilindungi dari file manager. Sampel CPU dibatasi pada kapasitas
-  vCPU container; startup mendapat burst 25% yang dikembalikan segera setelah
-  ready, dan pengecekan startup yang duplikatif dikurangi.
-- Riwayat console sekarang mengurutkan log Minecraft dan event MyPanel memakai
-  timestamp yang sama, log burst dibaca dengan cursor tanpa tail-reset, dan
-  readiness tidak lagi menunggu pengambilan sampel CPU atau interval healthcheck
-  setelah marker ready Paper dari boot saat ini muncul.
-- Update yang gagal setelah fast-forward sekarang dicoba kembali sampai commit
-  tersebut berhasil melewati readiness check.
-- Container Minecraft dapat menyiapkan ownership data dan berpindah ke user
-  non-root dengan capability bootstrap minimum.
-- CPU dan working-memory server dihitung sesuai limit/cgroup, console dikirim
-  incremental dengan dukungan warna aman, dan command tidak lagi membuat noise
-  koneksi RCON per perintah.
-- Console tidak lagi menampilkan timestamp Docker ganda, level log dan nama
-  plugin diberi warna semantik, dan CPU mengikuti persentase core Docker tanpa
-  normalisasi kedua yang mengecilkan nilainya.
-- Status server tetap memulai sampai health Minecraft siap, command diblokir
-  selama startup, dan terminal mengikuti background serta palette light mode.
-- Console menerjemahkan warna plugin dari ANSI, kode Minecraft/legacy, RGB,
-  serta tag MiniMessage, dan meminta output Adventure true-color tanpa
-  mengizinkan kontrol terminal non-warna.
-- File yang diunggah panel memakai group Minecraft (`GID 1000`), sehingga JAR
-  plugin dapat dibaca dan ditemukan Paper saat server dimulai.
+### ✨ Fitur Baru (Added)
+- **CurseForge Modpack Discovery**: Pencarian dan instalasi modpack CurseForge dengan penyesuaian otomatis Forge/NeoForge, Minecraft, dan Java; konfirmasi nama server, backup pra-instalasi otomatis, dan rollback saat kegagalan boot.
+- **Telemetri & Metrik Batch**: Pengambilan metrik server batch, Minecraft Server List Ping (pemain online dan latency), riwayat 24 jam resolusi 1 menit, rollup 7 hari, dan sistem notifikasi alert in-panel.
+- **Manajemen Add-on Modrinth Terkelola**: Pencarian plugin/mod terverifikasi dari Modrinth, dependency resolution, SHA-512 checksum verification, dan penanda restart-required.
+- **File Manager & Backup Terkelola**: Pembuatan folder aman, rename/move terproteksi dari path traversal, backup terkompresi yang dapat diunduh, snapshot pra-restore, dan penjadwalan otomatis.
+- **Multi-Tenant Hosting & Billing Simulasi**: Registrasi multi-user, RBAC Owner vs User, paket hosting tematik (Starter, Iron, Gold, Diamond), alokasi atomik ber-advisory lock, langganan 30 hari, dan masa tenggang 7 hari.
+- **Pembaruan Satu Perintah (`scripts/update.sh`)**: Skrip fast-forward update otomatis dengan build image, migrasi eksplisit, rollout container, dan verifikasi kesiapan health check.
 
-## [0.1.0] - 2026-08-20
+### 🐛 Perbaikan & Optimasi (Fixed & Optimized)
+- **Zero Buffering Console**: Live console kini menggunakan satu persistent Docker stream dengan translasi kode warna Minecraft (`§`), ANSI true-color, dan MiniMessage tanpa latency polling 100ms.
+- **Named Pipe Execution**: Eksekusi perintah console dilakukan melalui FIFO worker persisten tanpa overhead spawning proses `docker exec`.
+- **Entity Explosion Cache**: Server Paper dan Purpur menerima patch startup internal untuk mengoptimalkan pemrosesan ledakan TNT tanpa memakan kuota disk pengguna.
+- **Resource Limits & Burst**: CPU dibatasi sesuai kapasitas vCPU aktual (0–100% per core) dengan burst 25% sementara saat fase booting untuk mempercepat kesiapan server.
 
-### Added
+---
 
-- Control plane single-owner dengan autentikasi Argon2id, session Redis, CSRF,
-  origin validation, rate limit, dan audit activity.
-- Job durable untuk provisioning dan lifecycle server, rekonsiliasi state,
-  alokasi port, serta limit resource.
-- Node agent mTLS dengan operasi Docker yang dibatasi untuk server terkelola.
-- Runtime Vanilla, Paper, Purpur, Fabric, Forge, dan NeoForge.
-- Console WebSocket, file manager aman, backup/restore, schedule, settings,
-  metrics, dan katalog runtime.
-- Dashboard React responsif yang terhubung ke API nyata.
-- Deployment Compose ter-harden dengan secret files, network terpisah,
-  filesystem read-only, capability drop, health check, dan log rotation.
+## 📦 [v0.1.0] — 2026-08-20
 
-[Unreleased]: https://github.com/rekis-0103/MyPanel-V2/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/rekis-0103/MyPanel-V2/releases/tag/v0.1.0
+### ✨ Fitur Awal (Added)
+- **Arsitektur Control Plane Terisolasi**: Go Controller dengan autentikasi Argon2id, session opaque di Redis, validasi CSRF, dan audit log persisten di PostgreSQL.
+- **Node Agent via mTLS**: Komunikasi controller-to-agent privat berbasis sertifikat x509 yang dikeluarkan oleh internal CA.
+- **Runtime Sandboxing**: Dukungan container Docker terisolasi untuk Vanilla, Paper, Purpur, Fabric, Forge, dan NeoForge dengan alokasi Java 21/25.
+- **Web Console xterm.js**: Streaming terminal interaktif melalui WebSocket terotentikasi.
+- **Dashboard Awal**: Tampilan manajemen server tunggal dengan pengaturan startup dan file manager.
+- **Compose Hardening**: Deployment dengan secret terisolasi, jaringan terpisah, dan kapabilitas Linux minimum.
+
+---
+
+[v0.2.0]: https://github.com/rekis-0103/MyPanel-V2/compare/v0.1.0...feat/mypanel-v1
+[v0.1.0]: https://github.com/rekis-0103/MyPanel-V2/releases/tag/v0.1.0

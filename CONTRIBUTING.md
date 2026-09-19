@@ -1,47 +1,60 @@
-# Contributing to MyPanel V2
+# 🤝 Panduan Kontribusi MyPanel V2
 
-Terima kasih telah membantu MyPanel. Perubahan sebaiknya kecil, dapat ditinjau,
-dan tetap mempertahankan boundary keamanan antara browser, controller, agent,
-dan Docker host.
+Terima kasih atas minat Anda untuk berkontribusi pada **MyPanel V2**! Kami menyambut baik perbaikan bug, penyempurnaan dokumentasi, maupun fitur baru yang sejalan dengan arsitektur proyek.
 
-## Sebelum mulai
+Proyek ini mengutamakan **keamanan boundary**, **stabilitas state**, dan **pengalaman pengguna yang responsif**. Harap tinjau pedoman berikut sebelum memulai.
 
-1. Cari issue yang sudah ada sebelum membuka issue baru.
-2. Untuk perubahan besar, jelaskan masalah, rancangan, migrasi, dan dampak
-   kompatibilitas terlebih dahulu di issue.
-3. Jangan memasukkan password, token, private key, sertifikat, `.env`, dump
-   database, world, atau backup server ke repository.
+---
 
-## Menjalankan proyek
+## 🧭 Alur Kerja Kontribusi
 
-Persyaratan dan instalasi utama ada di [README.md](README.md). Untuk konfigurasi
-lokal, salin `.env.example` menjadi `.env` dan hasilkan secret dengan script di
-`scripts/`. Gunakan nilai lokal yang unik; file aktual diabaikan Git.
+```mermaid
+flowchart LR
+    A[Fork / Clone Repo] --> B[Buat Branch Fitur]
+    B --> C[Coding & Testing]
+    C --> D[Validasi Quality Gate]
+    D --> E[Commit & Push]
+    E --> F[Buka Pull Request]
+```
 
-## Alur perubahan
+1. **Cari Issue Terlebih Dahulu**: Pastikan topik atau bug yang ingin Anda kerjakan belum dilaporkan atau sedang dikerjakan oleh orang lain.
+2. **Diskusikan Fitur Besar**: Jika Anda merencanakan perubahan arsitektur atau penambahan library besar, diskusikan rancangan dan dampak kompatibilitasnya di GitHub Issues terlebih dahulu.
+3. **Branching**: Buat branch terpisah dari `main` atau default branch dengan format deskriptif:
+   - `feat/nama-fitur` (contoh: `feat/backup-s3-export`)
+   - `fix/nama-bug` (contoh: `fix/console-ansi-parsing`)
+   - `docs/nama-dokumen` (contoh: `docs/api-update`)
 
-1. Buat branch dari branch default dengan nama yang menjelaskan tujuan,
-   misalnya `feat/sftp-access` atau `fix/restore-validation`.
-2. Ikuti pola dan dependency yang sudah dipakai proyek. Hindari menambahkan
-   dependency bila standard library atau dependency yang ada sudah memadai.
-3. Tambahkan atau perbarui test untuk perilaku yang berubah.
-4. Perbarui dokumentasi ketika API, konfigurasi, deployment, migrasi, atau
-   perilaku operator berubah.
-5. Buat commit terfokus dengan pesan imperatif, misalnya
-   `feat(agent): validate backup destination`.
+> [!CAUTION]
+> **JANGAN PERNAH** memasukkan file kredensial, token, password, private key sertifikat, file `.env`, dump database, world pemain, atau backup server ke dalam commit atau Pull Request.
 
-## Quality gate
+---
 
-Backend:
+## 🛡️ Prinsip Keamanan & Desain Arsitektur
 
+Saat menambahkan atau mengubah kode, patuhi prinsip utama MyPanel:
+
+| Prinsip | Keterangan |
+| :--- | :--- |
+| **Zero Docker Socket in Web/Controller** | Service Web dan Controller **tidak boleh** mengakses Docker socket. Semua operasi container wajib melalui Node Agent via **mTLS**. |
+| **Idempotent Migrations** | File migrasi SQL pada `migrations/` harus bersifat aditif dan aman dijalankan berulang kali (`IF NOT EXISTS`). |
+| **Opaque Sessions & CSRF** | Endpoint mutasi wajib memvalidasi session cookie di Redis, CSRF token yang cocok, dan origin header yang diizinkan. |
+| **Strict Path Traversal Checks** | Seluruh operasi file di Node Agent wajib diverifikasi agar tidak keluar dari direktori data server (melalui traversal `../` maupun symlink). |
+| **Resource Quotas** | Setiap container Minecraft baru wajib memiliki batas memori cgroup, limit vCPU, dan penyesuaian JVM headroom. |
+
+---
+
+## 🧪 Quality Gate Sebelum Mengirim PR
+
+Sebelum membuat Pull Request, pastikan seluruh tes dan validasi berikut lulus pada mesin lokal Anda:
+
+### 1. Backend (Go)
 ```sh
 cd controller
 go test -race ./...
 go vet ./...
 ```
 
-Frontend:
-
+### 2. Frontend (React + TypeScript + Vite)
 ```sh
 cd web
 corepack enable
@@ -51,27 +64,31 @@ pnpm test
 pnpm build
 ```
 
-Deployment:
-
+### 3. Docker Compose & Config
 ```sh
 docker compose config --quiet
 ```
 
-Pull request harus menjelaskan tujuan, perubahan perilaku, risiko keamanan atau
-migrasi, dan hasil command validasi. Sertakan screenshot untuk perubahan UI yang
-terlihat.
+---
 
-## Pedoman keamanan
+## 📝 Format Pesan Commit
 
-- Controller publik tidak boleh menerima Docker socket.
-- Operasi Docker baru harus melalui agent, allowlist operasi, validasi UUID,
-  dan boundary mTLS yang sudah ada.
-- Endpoint mutasi browser harus mempertahankan session, CSRF, origin check,
-  validasi input, ownership, dan audit event yang relevan.
-- Path file harus tetap berada di root server dan tidak boleh lolos melalui
-  traversal atau symlink.
-- Pesan error dari node atau dependency tidak boleh membocorkan secret atau
-  detail host sensitif ke browser.
+Gunakan standar [Conventional Commits](https://www.conventionalcommits.org/) dalam bahasa imperatif singkat:
 
-Kerentanan harus dilaporkan mengikuti [SECURITY.md](SECURITY.md), bukan melalui
-issue publik.
+- `feat(scope): deskripsi perubahan fitur`
+- `fix(scope): deskripsi perbaikan bug`
+- `docs(scope): pembaruan dokumentasi`
+- `style(scope): penyesuaian visual atau format`
+- `refactor(scope): restrukturisasi kode tanpa mengubah perilaku`
+- `test(scope): penambahan atau pembaruan test suite`
+
+*Contoh:*
+- `feat(agent): validate archive checksum on backup restore`
+- `fix(ui): prevent console buffer freezing during high burst logs`
+
+---
+
+## 📬 Melaporkan Kerentanan Keamanan
+
+> [!IMPORTANT]
+> Jika Anda menemukan kerentanan keamanan, **JANGAN** membuat issue publik. Silakan ikuti instruksi pengungkapan yang bertanggung jawab pada [SECURITY.md](SECURITY.md).

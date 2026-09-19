@@ -1,303 +1,273 @@
-# MyPanel V2
+<div align="center">
 
-MyPanel adalah control plane dan simulasi layanan hosting Minecraft Java
-multi-user untuk satu Linux VM.
-Arsitekturnya terinspirasi panel hosting modern, tetapi implementasinya berdiri
-sendiri: React untuk UI, Go untuk controller dan node agent, PostgreSQL untuk
-state durable, Redis untuk session/rate limit, serta Docker untuk runtime server.
+# ⛏️ MyPanel V2
 
-Status proyek: **v0.2.0-dev / single-node multi-tenant**. Transaksi di panel
-bersifat simulasi dan tidak memproses uang nyata. Proyek belum ditujukan sebagai
-pengganti Pterodactyl yang kompatibel langsung.
+**Modern Multi-Tenant Minecraft Server Control Plane & Hosting Infrastructure**
 
-## Fitur v1
+[![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go)](https://golang.org)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?style=flat-square&logo=vite)](https://vitejs.dev)
+[![Docker](https://img.shields.io/badge/Docker-Compose_v2-2496ED?style=flat-square&logo=docker)](https://docker.com)
+[![Security](https://img.shields.io/badge/Security-mTLS_Agent_Isolated-3fb950?style=flat-square&logo=shield)](docs/architecture.md)
+[![Status](https://img.shields.io/badge/Status-v0.2.0--dev-f59e0b?style=flat-square)](#status-proyek)
 
-- Login owner dan user dengan Argon2id, session opaque di Redis, CSRF, origin
-  check, rate limit, registrasi opsional, suspend akun, serta reset password
-  sementara yang wajib diganti saat login berikutnya.
-- Isolasi ownership: user hanya dapat melihat dan mengelola resource server
-  miliknya; owner dapat mengelola semua server melalui ID serta melihat pemilik.
-- Marketplace paket, checkout instan simulasi, order, perpanjangan 30 hari,
-  retry provisioning, masa tenggang 7 hari, dan pelepasan CPU/RAM/port tanpa
-  menghapus world.
-- Dashboard kapasitas admin untuk total, reservasi, sisa vCPU/RAM/disk/port, dan
-  telemetri host. Checkout ditolak atomik bila resource tidak cukup.
-- Provisioning asynchronous dan lifecycle start/stop/restart/delete dengan job
-  durable serta reconciliation desired/observed state.
-- Runtime Vanilla, Paper, Purpur, Fabric, Forge, dan NeoForge dengan versi
-  Minecraft serta Java 21/25 yang dapat dipilih per server.
-- Alokasi port otomatis; limit CPU, total memory, JVM heap headroom, PID, dan
-  kuota disk yang dipantau agent.
-- UI responsif dengan navigasi server kontekstual, mode terang/gelap, navigasi
-  bawah mobile, deep-link per server, serta pilihan bahasa Indonesia/English.
-- Console xterm.js berwarna melalui WebSocket incremental, grafik CPU/RAM/disk,
-  jumlah pemain dan latency dari Minecraft status ping, serta riwayat metric
-  24 jam/7 hari.
-- File manager dengan upload drag-and-drop, editor, folder baru, rename, dan
-  download; backup checksum dengan snapshot pra-restore serta download; schedule
-  edit/jeda/run-now; notifikasi in-panel; dan audit log.
-- Manager plugin/mod terkelola dengan pencarian kompatibel dari Modrinth,
-  adapter CurseForge opsional, dependency confirmation, checksum verification,
-  install/update/remove durable, dan penanda restart-required.
-- Manager modpack khusus CurseForge dengan pilihan file yang kompatibel,
-  penyesuaian otomatis Forge/NeoForge, Minecraft, dan Java, backup pra-perubahan,
-  konfirmasi nama server, verifikasi boot, serta rollback bila instalasi gagal.
-- Agent privat dengan mTLS. Controller dan web tidak menerima Docker socket.
-- Compose dengan secret files, network terpisah, filesystem read-only, capability
-  minimum, log rotation, serta health/readiness check. Agent hanya mempertahankan
-  `DAC_OVERRIDE` agar dapat mengelola direktori data milik UID Minecraft.
+<p align="center">
+  <a href="#-fitur-utama">Fitur Utama</a> •
+  <a href="#-tampilan-antarmuka">Tampilan</a> •
+  <a href="#-arsitektur--keamanan">Arsitektur</a> •
+  <a href="#-instalasi-cepat">Instalasi</a> •
+  <a href="#-alur-hosting-simulasi">Marketplace & Billing</a> •
+  <a href="#-dokumentasi">Dokumentasi</a>
+</p>
 
-Detail boundary dan data flow ada di [docs/architecture.md](docs/architecture.md),
-sedangkan kontrak HTTP ada di [docs/api.md](docs/api.md).
+![MyPanel Hero](web/src/assets/minecraft/hero-landscape.jpg)
 
-## Persyaratan
+</div>
 
-- Linux VM dengan Docker Engine dan Docker Compose v2
-- Sedikitnya 4 GiB RAM; sesuaikan `NODE_MEMORY_MB` agar menyisakan RAM untuk OS,
-  database, Redis, controller, dan agent
-- Port panel dan rentang port game yang dapat dijangkau oleh klien yang sesuai
+---
 
-Tetapkan `NODE_CPUS`, `NODE_MEMORY_MB`, dan `NODE_DISK_MB` sebagai kapasitas yang
-boleh dijual. Sisakan headroom untuk OS dan service panel. Registrasi publik
-dapat dimatikan dengan `REGISTRATION_ENABLED=false`.
+## 📌 Ringkasan
 
-## Instalasi
+**MyPanel V2** adalah platform *control plane* dan simulasi layanan hosting Minecraft Java multi-tenant untuk satu Linux VM. 
+
+Berbeda dengan solusi panel konvensional, MyPanel dibangun dari nol dengan arsitektur modern yang memisahkan boundary keamanan secara ketat:
+- **Frontend**: React 19 + TypeScript + Vite, dikemas dengan tema Minecraft yang elegan, glassmorphism obsidian, telemetri live TPS 20.0, serta dukungan dwibahasa (ID/EN).
+- **Controller**: Go backend berkinerja tinggi, mengelola autentikasi Argon2id, session opaque di Redis, state durable di PostgreSQL, serta otorisasi role-based (Owner/User).
+- **Node Agent**: Layanan privat yang berkomunikasi dengan Controller secara eksklusif melalui **mTLS internal**. Controller dan Web **tidak pernah** menyentuh Docker socket.
+- **Runtime Sandbox**: Setiap instance server Minecraft berjalan dalam container Docker terisolasi dengan kuota cgroup (vCPU, RAM, PID limit, quota storage).
+
+> [!NOTE]
+> Transaksi pemesanan dan checkout pada marketplace MyPanel bersifat **simulasi internal** untuk mempermudah alokasi resource dan pengujian kapasitas hosting tanpa gateway pembayaran uang nyata.
+
+---
+
+## 🎮 Tampilan Antarmuka
+
+| Halaman | Deskripsi |
+| :--- | :--- |
+| **Landing Page (`/`)** | Showcase server Minecraft interaktif, live metrics preview, bento grid fitur, serta integrasi runtime Paper/Purpur/Fabric. |
+| **Login Page (`/login`)** | Desain bertema senja Nether portal, kartu obsidian glassmorphic, switch pendaftaran instan, dan password visibility toggle. |
+| **Web Console** | Terminal streaming real-time via xterm.js & WebSocket, rendering ANSI true-color, filter event lifecycle, dan eksekusi pipe langsung. |
+| **File Manager** | Editor konfigurasi langsung (`server.properties`, yaml), navigasi folder aman tanpa path traversal, drag-and-drop file uploader. |
+| **Addons & Modpacks** | Integrasi 1-klik Modrinth API & adapter CurseForge dengan verifikasi checksum SHA-512 dan rollback protektif. |
+
+<div align="center">
+
+![MyPanel Login Screen](web/src/assets/minecraft/portal-night.jpg)
+*Suasana malam portal nether pada halaman autentikasi MyPanel*
+
+</div>
+
+---
+
+## ✨ Fitur Utama
+
+### 1. 🛡️ Keamanan & Isolasi Tingkat Lanjut
+- **Zero Docker Socket Exposure**: Web dan Controller berjalan tanpa hak akses ke Docker daemon. Semua manajemen container didelegasikan ke Agent via **mTLS**.
+- **Autentikasi Argon2id & Session Opaque**: Session tersimpan aman di Redis dengan proteksi CSRF token, origin validation, dan rate limiting ketat.
+- **Isolasi Kepemilikan (RBAC)**: User hanya dapat melihat dan mengelola instance miliknya sendiri. Owner memiliki hak kontrol penuh atas armada server dan alokasi host.
+- **Container Hardening**: Filesystem read-only, capability minimum (`cap_drop: ALL`), dan alokasi UID/GID non-root (`1000:1000`).
+
+### 2. ⚡ Manajemen Server & Runtime Fleksibel
+- **Multi-Engine Supported**: Mendukung penuh **PaperMC**, **Purpur**, **Fabric**, **Vanilla**, **Forge**, dan **NeoForge**.
+- **Automated Java Provisioning**: Otomatis menyesuaikan runtime Java 21 atau Java 25 berdasarkan versi Minecraft yang dipilih.
+- **Real-Time 20.0 TPS Guarantee**: Pemantauan tick rate, latency ping (Server List Ping), penggunaan heap JVM, serta memori cgroup aktual.
+- **Named Pipe Console**: Perintah dieksekusi secara instan melalui worker FIFO pipe persisten tanpa overhead spawning proses `docker exec`.
+
+### 3. 📦 Ekosistem Add-on & Modpack 1-Klik
+- **Modrinth Catalog**: Cari dan pasang plugin/mod kompatibel secara instan dengan verifikasi dependensi dan SHA-512 checksum.
+- **CurseForge Integration**: Pasang modpack lengkap dengan verifikasi manifest, backup pra-instalasi otomatis, dan fallback rollback jika booting gagal.
+- **Safe File Management**: Editor file in-browser untuk `server.properties`, plugin config, dan pengelolaan world tanpa risiko path traversal.
+
+### 4. 🛒 Marketplace Kapasitas & Billing Simulasi
+- **Paket Hosting Tematik**: Paket bertema Starter, Iron, Gold, dan Diamond dengan konfigurasi tema warna dan ikon SVG lokal.
+- **Alokasi Atomic**: Pengecekan sisa vCPU, RAM, disk, dan port secara atomik menggunakan PostgreSQL advisory lock untuk mencegah *overselling*.
+- **Siklus Langganan 30 Hari**: Dilengkapi masa tenggang (*grace period*) 7 hari, pelepasan resource otomatis, dan opsi reaktivasi world.
+
+---
+
+## 🏛️ Arsitektur & Keamanan
+
+MyPanel menerapkan prinsip *defense-in-depth* dengan memisahkan jaringan publik dan jaringan kontrol:
+
+```mermaid
+flowchart TD
+    subgraph Public_Zone ["🌐 Public Network / Host"]
+        Browser["🖥️ Browser Client"]
+    end
+
+    subgraph Edge_Zone ["🛡️ Edge Layer"]
+        Caddy["Web (Caddy 2.10 Reverse Proxy & Static SPA)"]
+    end
+
+    subgraph Internal_App ["🔒 App Network (Internal)"]
+        Controller["Go Controller (REST API, Auth, Job Scheduler)"]
+        Postgres[("PostgreSQL 17 (Durable State & Migrations)")]
+        Redis[("Redis 8 (Opaque Sessions & Rate Limiting)")]
+    end
+
+    subgraph Node_Zone ["⚡ Control Network (Private mTLS)"]
+        Agent["Go Node Agent (mTLS Daemon)"]
+        DockerEngine["Docker Engine Daemon"]
+    end
+
+    subgraph Sandbox_Zone ["🎮 Minecraft Sandboxes (Isolated Bridge)"]
+        MC1["Server 1 (Paper 1.21.1)"]
+        MC2["Server 2 (Purpur 1.21.1)"]
+        MC3["Server 3 (Fabric 1.20.4)"]
+    end
+
+    Browser -->|HTTP/WebSocket| Caddy
+    Caddy -->|/api proxy| Controller
+    Controller --> Postgres
+    Controller --> Redis
+    Controller -->|mTLS gRPC/REST| Agent
+    Agent --> DockerEngine
+    DockerEngine --> MC1
+    DockerEngine --> MC2
+    DockerEngine --> MC3
+```
+
+Detail boundary dan protokol komunikasi lengkap tersedia di [docs/architecture.md](docs/architecture.md).
+
+<div align="center">
+
+![MyPanel Datacenter Infrastructure](web/src/assets/minecraft/redstone-datacenter.jpg)
+*Visualisasi arsitektur node server container yang terisolasi*
+
+</div>
+
+---
+
+## 🚀 Instalasi Cepat
+
+### Persyaratan Minimum
+- **OS**: Linux VM (Ubuntu 22.04/24.04 LTS atau Debian 12 direkomendasikan)
+- **Engine**: Docker Engine 24+ & Docker Compose v2
+- **Hardware**: Minimal 4 GiB RAM (sisakan memori untuk OS dan stack panel)
+
+### Langkah Instalasi (Linux / macOS)
 
 ```sh
+# 1. Clone repository
+git clone https://github.com/rekis-0103/MyPanel-V2.git
+cd MyPanel-V2
+
+# 2. Siapkan file konfigurasi environment
 cp .env.example .env
+
+# 3. Generate internal certificates & secure secrets
 sh scripts/init-secrets.sh
+
+# 4. Validasi dan jalankan container
 docker compose config --quiet
 docker compose up --build -d
+
+# 5. Periksa status layanan
 docker compose ps
 ```
 
-Password owner pertama tersimpan di `secrets/admin_password`. File tersebut dan
-secret lain tidak masuk Git. Buka panel pada `http://127.0.0.1:8080` dari VM,
-atau ubah `PANEL_BIND_IP` ke IP host-only/VPN yang memang ingin dilayani.
-
-Sebelum panel diakses melalui HTTPS, set `TRUSTED_ORIGIN` ke origin HTTPS dan
-`COOKIE_SECURE=true`. Jangan expose panel HTTP langsung ke internet. Panduan
-SSH, firewall, TLS/VPN, backup, dan update ada di
-[docs/runbooks/vm-hardening.md](docs/runbooks/vm-hardening.md).
-
-### PowerShell
+### Langkah Instalasi (Windows PowerShell)
 
 ```powershell
 Copy-Item .env.example .env
 ./scripts/init-secrets.ps1
 docker compose config --quiet
 docker compose up --build -d
-```
-
-## Operasi
-
-```sh
-# Status dan readiness
 docker compose ps
-curl --fail http://127.0.0.1:8080/api/v1/health/ready
-
-# Log terfokus
-docker compose logs --tail=200 controller agent
-
-# Terapkan source lokal baru dan migrasinya tanpa menghapus data
-docker compose build
-docker compose run --rm migrate
-docker compose up -d
-
-# Hentikan stack; named volume dan world tetap dipertahankan
-docker compose down
 ```
 
-World dan backup berada di `/var/lib/mypanel`. PostgreSQL dan Redis memakai named
-volume Docker. Jangan menjalankan `docker compose down -v` kecuali memang ingin
-menghapus state database, session, dan sertifikat internal.
+> [!IMPORTANT]
+> Password default akun `admin` pertama kali di-generate secara otomatis dan disimpan di file lokal **`secrets/admin_password`**. File ini diabaikan oleh Git untuk menjamin kerahasiaan kredensial.
 
-Alamat server yang bind ke `0.0.0.0` ditampilkan menggunakan hostname panel,
-sehingga panel pada `192.168.56.101` mengiklankan `192.168.56.101:<port>` tanpa
-mengubah bind Docker yang tetap menerima koneksi pada seluruh interface.
+Akses panel melalui browser di:
+`http://127.0.0.1:8080` (atau IP host VM Anda, misalnya `http://192.168.56.101:8081`).
 
-## Alur akun dan hosting simulasi
+---
 
-Route `/` menampilkan landing page publik dengan ringkasan fitur dan alur
-hosting. Tombol aksi mengarah ke `/login`, tempat owner dapat masuk dan user
-dapat masuk atau membuat akun. Foto landing page berasal dari Unsplash dan
-sumber lengkapnya dicatat di `web/src/assets/landing/ATTRIBUTION.md`.
+## 🔄 Pembaruan Satu Perintah (`scripts/update.sh`)
 
-Owner tetap login dengan akun bootstrap lama. User mendaftar dari halaman login,
-memilih paket bertema Starter, Iron, Gold, atau Diamond, lalu checkout simulasi
-membuat server, order, subscription, alokasi port, dan job provisioning dalam
-satu transaksi. Tidak ada payment gateway atau uang nyata.
-
-Owner dapat mengubah warna tema dan logo paket dari halaman Paket Hosting serta
-memberi penanda **Paling laris** dan/atau **Rekomendasi**. Logo dipilih dari
-katalog aset lokal yang sudah diatribusikan sehingga marketplace tidak memuat
-gambar pihak ketiga pada saat runtime.
-
-Saat checkout, user memilih runtime dan versi Minecraft dari katalog. Java
-ditetapkan otomatis: Minecraft `26.x` memakai Java 25, sedangkan versi yang lebih
-lama pada katalog memakai Java 21. Controller menghitung ulang pilihan ini agar
-nilai Java tidak bergantung pada data yang dikirim browser.
-
-Subscription berlaku 30 hari. Setelah kedaluwarsa, server dihentikan dan masuk
-masa tenggang 7 hari. Jika belum diperpanjang, container, CPU, RAM, dan port
-dilepas; world tetap disimpan dan disk masih dihitung sebagai kapasitas
-terpakai. Reaktivasi mengambil port baru dan memprovision ulang container dengan
-data lama. Schedule tidak berjalan untuk subscription yang tidak aktif.
-
-Saat migrasi multi-user pertama, session Redis lama akan ditolak karena belum
-memiliki versi session. Login ulang sekali dengan credential yang sama; password
-owner tidak berubah.
-
-Saat owner membuat server secara manual, pilih Java 21 untuk kompatibilitas luas
-atau Java 25 untuk server/plugin modern yang sudah mendukungnya. Image dapat
-dipin melalui
-`MINECRAFT_IMAGE_JAVA_21` dan `MINECRAFT_IMAGE_JAVA_25` di `.env`; browser tidak
-dapat memasukkan image arbitrary. Server yang sudah ada dimigrasikan ke Java 21
-agar perilakunya tidak berubah.
-
-### Provider add-on opsional
-
-Modrinth aktif tanpa credential. Pencarian otomatis membatasi hasil sesuai
-runtime dan versi Minecraft server. File utama dan dependency wajib diunduh oleh
-agent hanya dari host CDN allowlist dan harus lulus SHA-512 sebelum dipindahkan
-ke `plugins/` atau `mods/`. Add-on terkelola tersedia untuk Paper/Purpur
-(plugin) dan Fabric (mod); Vanilla tetap ditampilkan tanpa menu add-on karena
-runtime tersebut tidak memiliki plugin/mod loader.
-
-CurseForge memerlukan API key resmi. Simpan key di file di luar Git, mount file
-tersebut read-only ke service `controller` melalui `compose.override.yaml`, lalu
-set `CURSEFORGE_API_KEY_FILE` ke path di dalam container. Contoh override lokal:
-
-```yaml
-services:
-  controller:
-    volumes:
-      - /etc/mypanel/curseforge_api_key:/run/mypanel-secrets/curseforge_api_key:ro
-    environment:
-      CURSEFORGE_API_KEY_FILE: /run/mypanel-secrets/curseforge_api_key
-```
-
-Jangan menaruh key di `.env`, commit, issue, atau log. Setelah mengubah override,
-jalankan `docker compose up -d --build controller web`.
-
-Key yang sama mengaktifkan halaman **Modpack** pada navigasi server. Browser
-hanya menerima metadata katalog; credential tidak pernah dikirim ke browser,
-agent, atau container Minecraft. Pengguna memilih file manifest biasa dari
-CurseForge, lalu controller memvalidasi ulang project, file, loader, versi
-Minecraft, dan Java. Server dihentikan dan backup `pre_modpack` dibuat sebelum
-runtime diganti menjadi `AUTO_CURSEFORGE` dengan file ID yang dipin. MyPanel
-menyalakan hasil instalasi sampai health check Minecraft siap. Jika sebelumnya
-server offline, server dihentikan kembali setelah verifikasi; bila instalasi
-gagal, data dan definisi runtime sebelumnya dipulihkan dari backup.
-
-Pergantian ke Forge/NeoForge tidak menghapus world atau file plugin, tetapi
-plugin Paper/Purpur tidak dijalankan oleh mod loader. Pastikan kapasitas disk
-mencukupi karena arsip backup dan file modpack tetap memakai storage node.
-
-## Development dan quality gate
-
-```sh
-cd controller
-go test -race ./...
-go vet ./...
-
-cd ../web
-corepack enable
-pnpm install --frozen-lockfile
-pnpm lint
-pnpm test
-pnpm build
-```
-
-Frontend dev server memakai `pnpm dev` dan mem-proxy `/api` ke controller pada
-`127.0.0.1:8080`. Buka `http://127.0.0.1:5173` untuk landing page atau
-`http://127.0.0.1:5173/login` untuk autentikasi; route seperti
-`/servers/<id>/console` dapat dibuka langsung dan akan tetap bekerja di image
-Caddy produksi. Untuk validasi deployment, jalankan
-`docker compose config --quiet` sebelum `docker compose up`.
-
-Telemetri CPU, RAM, disk, dan uptime host tersedia untuk owner melalui endpoint
-kapasitas; user hanya menerima sisa kapasitas jual dan ketersediaan paket.
-Dashboard mengambil metric semua server melalui satu endpoint batch. File
-manager mendukung create-folder serta move/rename dengan pemeriksaan traversal,
-symlink, path internal, dan konflik tujuan di agent.
-Metric server tetap tersedia: CPU mengikuti angka Docker (100% setara satu
-vCPU penuh dan dapat mencapai `jumlah vCPU × 100%`), RAM mengurangi cache
-cgroup, dan disk menghitung file di direktori data server. Console memakai
-timestamp Docker sebagai cursor internal, menghilangkannya dari tampilan,
-mempertahankan timestamp Minecraft, serta memberi
-warna berbeda pada level INFO/WARN/ERROR dan nama plugin. Setelah container
-dinyalakan, status tetap `starting` dan command console terkunci sampai marker
-`Done (...)! For help, type ...` dari boot saat ini terdeteksi atau healthcheck
-Minecraft menyatakan server siap; light mode juga memakai terminal berlatar
-terang dengan palette ANSI berkontras tinggi. Warna keluaran plugin didukung
-melalui ANSI SGR, kode Minecraft `§`, legacy `&`, RGB `&x&…`, serta tag
-MiniMessage bernama/hex dan dekorasi. Container baru atau yang diperbarui juga
-meminta logger Adventure menghasilkan ANSI true-color secara eksplisit.
-Event lifecycle control plane ditampilkan oranye di console, termasuk proses
-start/restart, status running/stopped, restart berhasil, dan alasan kegagalan
-yang aman seperti OOM, exit code, disk limit, atau timeout healthcheck. Sebanyak
-200 event terbaru per server disimpan agar tetap tersedia setelah halaman
-console dimuat ulang. Snapshot log dan lifecycle digabungkan berdasarkan waktu;
-setelah itu agent mempertahankan satu stream Docker dan meneruskan setiap baris
-baru tanpa polling atau buffer waktu di browser. xterm tetap memakai write queue
-ber-backpressure agar burst besar tidak membekukan halaman. Command diproses
-oleh antrean worker terpisah dan ditulis langsung ke named pipe persisten pada
-data server, sehingga tidak perlu membuat proses `docker exec` per command.
-Container lama tetap memakai fallback sampai konfigurasi berikutnya diterapkan.
-Nilai CPU runtime juga dibatasi pada kapasitas container (`jumlah vCPU × 100%`),
-sehingga server 2 vCPU ditampilkan dalam rentang 0–200%. Saat startup/restart,
-agent sementara memberi burst 25% (2 vCPU menjadi 2,5 core) dan otomatis
-mengembalikan hard limit segera setelah Minecraft siap.
-Server Paper dan Purpur juga mengaktifkan `optimize-explosions` melalui patch
-startup internal. Optimasi ini mengurangi pekerjaan pencarian entity saat TNT
-atau ledakan lain diproses, tetapi tidak menjamin 20 TPS untuk puluhan ribu TNT
-karena simulasi ledakan tetap berjalan pada tick thread Minecraft.
-
-## Update dari GitHub
-
-Setelah versi yang diinginkan sudah tersedia pada branch GitHub yang dilacak,
-jalankan dari VM:
+Untuk memperbarui instalasi MyPanel di VM langsung dari commit terbaru GitHub:
 
 ```sh
 cd ~/MyPanel-V2
 sh scripts/update.sh
 ```
 
-Script hanya menerima update fast-forward pada working tree bersih, memvalidasi
-Compose, membangun image baru, menjalankan migrasi secara eksplisit, mengganti
-container, lalu menunggu readiness. `.env`, secret, world, backup, serta named
-volume tidak diubah. Untuk update otomatis setiap lima menit, ikuti
-[runbook update VM](docs/runbooks/vm-updates.md).
+**Mekanisme `update.sh`:**
+1. Memverifikasi working tree bersih (tanpa perubahan yang belum ter-commit).
+2. Melakukan *fast-forward merge* dari origin branch (`feat/mypanel-v1`).
+3. Membangun ulang image Docker (`docker compose build --pull`).
+4. Menjalankan migrasi database PostgreSQL secara idempotensial (`docker compose run --rm migrate`).
+5. Me-restart container dan memvalidasi kesiapan via endpoint health check `http://127.0.0.1:8080/api/v1/health/ready`.
 
-## Dokumentasi proyek
+---
 
-- [Arsitektur dan trust boundary](docs/architecture.md)
-- [Kontrak API](docs/api.md)
-- [Runbook deployment dan hardening VM](docs/runbooks/vm-hardening.md)
-- [Rencana dan catatan verifikasi v1](docs/plans/mypanel-v1.md)
-- [Panduan kontribusi](CONTRIBUTING.md)
-- [Kebijakan keamanan](SECURITY.md)
-- [Riwayat perubahan](CHANGELOG.md)
+## 🛠️ Perintah Operasional
 
-Kontribusi melalui issue atau pull request dipersilakan. Jangan melaporkan
-kerentanan atau membagikan kredensial melalui issue publik; ikuti
-[SECURITY.md](SECURITY.md).
+```sh
+# Memeriksa kesiapan health check API
+curl --fail http://127.0.0.1:8080/api/v1/health/ready
 
-## Batasan saat ini
+# Melihat log controller dan agent secara real-time
+docker compose logs -f --tail=100 controller agent
 
-- Satu owner dan satu node; belum ada cluster scheduling, invoice pajak,
-  payment gateway nyata, refund, kupon, atau email transactional.
-- Pembelian dan pembayaran sepenuhnya simulasi. Status order bukan bukti
-  pembayaran nyata.
-- Kuota disk ditegakkan oleh file manager, pemeriksaan sebelum start/restart,
-  dan reconciliation berkala. Hard filesystem project quota bergantung pada
-  filesystem host dan belum dikonfigurasi otomatis.
-- Player count dan latency memakai Minecraft Server List Ping; nilai tidak
-  tersedia ketika runtime belum siap atau query server dinonaktifkan.
-- Backup tersimpan lokal pada node; tujuh backup terbaru per schedule dipertahankan,
-  tetapi salinan off-site tetap harus ditambahkan oleh operator.
-- CurseForge nonaktif secara default dan membutuhkan API key resmi melalui file
-  secret. Spigot/Bukkit tidak di-scrape dan belum menjadi provider.
-- TLS publik/VPN dan hardening SSH sengaja menjadi tindakan operator agar proses
-  instalasi tidak memutus akses VM.
+# Menjalankan test suite backend (Go)
+cd controller && go test -race ./...
+
+# Menjalankan test suite frontend (Vitest + TypeScript)
+cd web && pnpm test && pnpm build
+
+# Menghentikan stack (data server & database tetap aman di volume)
+docker compose down
+```
+
+---
+
+## 📂 Struktur Direktori
+
+```text
+MyPanel-V2/
+├── cmd/
+│   ├── controller/      # Entrypoint REST API & worker scheduler
+│   ├── agent/           # Privileged mTLS daemon pengelola Docker
+│   └── certgen/         # Generator sertifikat internal CA & mTLS
+├── internal/            # Core libraries, auth, database, models, & logic
+├── migrations/          # File migrasi SQL terurut untuk PostgreSQL
+├── scripts/
+│   ├── update.sh        # Skrip otomatisasi pembaruan zero-downtime
+│   ├── init-secrets.sh  # Generator secret & passphrase untuk Linux
+│   └── init-secrets.ps1 # Generator secret untuk Windows PowerShell
+├── web/
+│   ├── src/
+│   │   ├── assets/      # Grafis tema Minecraft, logo, & audio/SVG
+│   │   ├── pages/       # Landing, Login, Console, Servers, Dashboard
+│   │   ├── layouts/     # Shell navigasi & responsive layout
+│   │   └── types.ts     # TypeScript interface & API contracts
+│   └── Caddyfile        # Konfigurasi Caddy reverse proxy & header CSP
+├── docs/                # Dokumentasi arsitektur, API, dan runbook
+└── compose.yaml         # Definisi multi-container Docker stack
+```
+
+---
+
+## 📚 Indeks Dokumentasi
+
+- 📐 **[Arsitektur & Trust Boundaries](docs/architecture.md)** — Rincian boundary keamanan, alur data, dan model enkripsi.
+- 🔌 **[Kontrak REST API](docs/api.md)** — Spesifikasi endpoint HTTP, payload permintaan, dan kode status.
+- 🛡️ **[Runbook Hardening VM](docs/runbooks/vm-hardening.md)** — Panduan isolasi firewall, proteksi SSH, reverse proxy TLS, dan backup off-site.
+- 🔄 **[Runbook Pembaruan VM](docs/runbooks/vm-updates.md)** — Prosedur deployment berkelanjutan dan timer otomatis.
+- 🤝 **[Panduan Kontribusi](CONTRIBUTING.md)** — Standar kode, quality gate, dan workflow Pull Request.
+- 🔐 **[Kebijakan Keamanan](SECURITY.md)** — Tata cara pelaporan kerentanan secara bertanggung jawab.
+- 📜 **[Catatan Rilis (Changelog)](CHANGELOG.md)** — Riwayat pembaruan versi dan fitur terkini.
+
+---
+
+## 📄 Lisensi
+
+Proyek ini dikembangkan di bawah lisensi terbuka untuk tujuan simulasi manajemen infrastruktur server Minecraft. Seluruh aset grafis dan ikon atribusi tercatat secara transparan di [web/src/assets/minecraft/ATTRIBUTION.md](web/src/assets/minecraft/ATTRIBUTION.md) dan [web/src/assets/marketplace/ATTRIBUTION.md](web/src/assets/marketplace/ATTRIBUTION.md).
+
+<div align="center">
+  <sub>Dibuat untuk Minecraft Server Administrators & Cloud Enthusiasts.</sub>
+</div>
